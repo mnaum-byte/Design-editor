@@ -4,6 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Canvas View</title>
+  <link rel="preconnect" href="https://picsum.photos" crossorigin>
+  <link rel="dns-prefetch" href="https://picsum.photos">
   <style>
     :root {
       --bg: #0f172a;
@@ -52,7 +54,18 @@
     .control-group label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
     .control-group input[type="range"],
     .control-group input[type="number"],
+    .control-group input[type="text"],
     .control-group select { width: 100%; }
+    .inline-add-row input[type="text"] {
+      flex: 1;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      font: inherit;
+      min-width: 0; /* allow flex shrink */
+    }
     /* Panel container */
     .panel {
       background: rgba(17, 24, 39, 0.8);
@@ -137,6 +150,17 @@
       resize: none;
       overflow: hidden;
       white-space: pre-wrap;
+      caret-color: var(--accent);
+      animation: caretGlow 1.2s ease-in-out infinite;
+      box-sizing: border-box;
+    }
+    /* Custom selection color for the inline text editor */
+    #canvas-text-editor::selection { background: rgba(79,70,229,0.28); color: #111827; }
+    #canvas-text-editor::-moz-selection { background: rgba(79,70,229,0.28); color: #111827; }
+    @keyframes caretGlow {
+      0% { box-shadow: 0 0 0 0 rgba(79,70,229,0.0); }
+      50% { box-shadow: 0 0 0 3px rgba(79,70,229,0.25); }
+      100% { box-shadow: 0 0 0 0 rgba(79,70,229,0.0); }
     }
     .btn {
       appearance: none;
@@ -154,6 +178,48 @@
     .btn:focus { outline: 2px solid rgba(255, 255, 255, 0.3); outline-offset: 2px; }
     .btn-primary { background: var(--accent); border-color: rgba(255, 255, 255, 0.22); color: white; box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
     .btn-primary:hover { filter: brightness(1.05); }
+    /* Prompt suggestion chips and autocomplete */
+    #prompt-suggestions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+    .chip { padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.06); color: var(--text); cursor: pointer; font: inherit; }
+    .chip:hover { background: rgba(255,255,255,0.12); }
+    #prompt-autocomplete { position: absolute; z-index: 60; background: rgba(17,24,39,0.98); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 6px; list-style: none; margin: 4px 0 0 0; display: none; max-height: 180px; overflow-y: auto; min-width: 220px; }
+    #prompt-autocomplete.show { display: block; }
+    #prompt-autocomplete li { padding: 6px 8px; border-radius: 6px; cursor: pointer; color: var(--text); }
+    #prompt-autocomplete li:hover { background: rgba(255,255,255,0.08); }
+    /* Context menu */
+    #context-menu {
+      position: fixed;
+      top: 0; left: 0;
+      display: none;
+      background: rgba(17,24,39,0.98);
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.45);
+      min-width: 180px;
+      padding: 6px;
+      z-index: 70;
+    }
+    #context-menu .item {
+      appearance: none;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      text-align: left;
+      border: 0;
+      background: transparent;
+      color: var(--text);
+      font: inherit;
+      padding: 10px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    #context-menu .item:hover { background: rgba(255,255,255,0.08); }
+    #context-menu .item:disabled { opacity: 0.5; cursor: not-allowed; }
+    #context-menu .item .icon { width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; }
+    #context-menu .item .icon svg { width: 16px; height: 16px; display: block; fill: rgba(255,255,255,0.85); }
+    #context-menu .item .label { flex: 1; }
     .stage {
       flex: 1;
       min-width: 0;
@@ -188,9 +254,30 @@
         <div class="control-group">
           <h3 class="panel-title">Content</h3>
           <div class="content-images">
-            <button id="open-add-text" class="btn" aria-haspopup="dialog">Add text</button>
-            <button id="open-generate-text" class="btn" aria-haspopup="dialog">Generate text</button>
-            <img data-asset-type="image" src="https://picsum.photos/seed/cursor1/480/320" alt="Sample image" loading="lazy"/>
+            <div class="control-group" style="width:100%">
+              <label for="inline-add-text-input" class="panel-title">Text</label>
+              <div class="inline-add-row" style="display:flex; gap:8px; align-items:center; width:100%">
+                <input id="inline-add-text-input" type="text" placeholder="Add your text" />
+                <button id="inline-add-text-btn" class="btn btn-primary" disabled>Add</button>
+              </div>
+              <div class="inline-add-actions" style="margin-top:8px; display:flex;">
+                <button id="open-generate-text" class="btn" aria-haspopup="dialog" style="width:100%">Generate text</button>
+              </div>
+            </div>
+            <button id="upload-asset" class="btn" aria-haspopup="dialog">Upload assets</button>
+            <input id="upload-asset-input" type="file" accept="image/*,video/*" multiple style="display:none" />
+            <img
+              data-asset-type="image"
+              src="https://picsum.photos/seed/cursor1/720/480"
+              srcset="https://picsum.photos/seed/cursor1/360/240 360w, https://picsum.photos/seed/cursor1/720/480 720w, https://picsum.photos/seed/cursor1/1200/800 1200w"
+              sizes="(max-width: 800px) 90vw, 260px"
+              width="260" height="173"
+              decoding="async"
+              fetchpriority="low"
+              alt="Sample image"
+              loading="eager"
+              crossorigin="anonymous"
+            />
             <div class="content-video" data-asset-type="video" data-src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4">
               <video muted playsinline loop src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"></video>
             </div>
@@ -212,24 +299,94 @@
         <button id="toggle-grid-btn" class="icon-btn" aria-label="Toggle grid" aria-pressed="false">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z"/></svg>
         </button>
+        <button id="toggle-videos-btn" class="icon-btn" aria-label="Play all videos" aria-pressed="false" style="margin-left:8px">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+        </button>
       </div>
       <textarea id="canvas-text-editor" style="display:none" spellcheck="false"></textarea>
+      <!-- Contextual menu -->
+      <div id="context-menu" role="menu" aria-hidden="true">
+        <button id="ctx-set-bg" class="item" role="menuitem">
+          <span class="icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5zm4 3h10v2H7V8zm0 4h6v2H7v-2z"/></svg>
+          </span>
+          <span class="label">Set as background</span>
+        </button>
+        <button id="ctx-duplicate" class="item" role="menuitem">
+          <span class="icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M7 7h10v10H7V7zm-2 2H3v12h12v-2H5V9z"/></svg>
+          </span>
+          <span class="label">Duplicate</span>
+        </button>
+        <button id="ctx-cut" class="item" role="menuitem">
+          <span class="icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M9.64 7.64L12 10l8-8 2 2-8 8 2.36 2.36A3 3 0 1 1 14 16a3 3 0 0 1-2-5.24L9.64 8.36a3 3 0 1 1 0-0.72zM7 7a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm10 10a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/></svg>
+          </span>
+          <span class="label">Cut</span>
+        </button>
+        <button id="ctx-bring-front" class="item" role="menuitem">
+          <span class="icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M3 3h8v8H3V3zm10 0h8v2h-8V3zm0 4h8v2h-8V7zm0 4h8v2h-8v-2zm0 4h8v2h-8v-2zM3 13h8v8H3v-8z"/></svg>
+          </span>
+          <span class="label">Bring to front</span>
+        </button>
+        <button id="ctx-bring-forward" class="item" role="menuitem">
+          <span class="icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M7 7h10v10H7V7zm10-4v2H7V3h10zM7 19h10v2H7v-2z"/></svg>
+          </span>
+          <span class="label">Bring forward</span>
+        </button>
+        <button id="ctx-send-back" class="item" role="menuitem">
+          <span class="icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M13 3h8v8h-8V3zM3 13h2v8H3v-8zm4 0h2v8H7v-8zm4 0h2v8h-2v-8zm4 0h2v8h-2v-8z"/></svg>
+          </span>
+          <span class="label">Send to back</span>
+        </button>
+        <button id="ctx-send-backward" class="item" role="menuitem">
+          <span class="icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M7 7h10v10H7V7zM7 3h10v2H7V3zm0 16h10v2H7v-2z"/></svg>
+          </span>
+          <span class="label">Send backward</span>
+        </button>
+        <button id="ctx-delete" class="item" role="menuitem">
+          <span class="icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M9 3h6a1 1 0 0 1 1 1v1h4v2H4V5h4V4a1 1 0 0 1 1-1zm1 6h2v9h-2V9zm4 0h2v9h-2V9zM8 9h2v9H8V9z"/></svg>
+          </span>
+          <span class="label">Delete</span>
+        </button>
+        <!-- Background context options -->
+        <button id="ctx-bgd-detach" class="item" role="menuitem" style="display:none">
+          <span class="icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4 4h16v6h-2V6H6v12h4v2H4V4zm9 6l7 7-2 2-7-7v-2h2z"/></svg>
+          </span>
+          <span class="label">Detach background</span>
+        </button>
+        <button id="ctx-bgd-delete" class="item" role="menuitem" style="display:none">
+          <span class="icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M9 3h6a1 1 0 0 1 1 1v1h4v2H4V5h4V4a1 1 0 0 1 1-1zM8 9h2v9H8zm4 0h2v9h-2zm4 0h2v9h-2z"/></svg>
+          </span>
+          <span class="label">Delete background</span>
+        </button>
+      </div>
       <!-- Add Text overlay -->
       <div id="add-text-overlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="add-text-title">
         <div class="modal">
-          <h3 id="add-text-title">Add text to canvas</h3>
-          <div class="row">
-            <input id="add-text-input" type="text" placeholder="Type your text..." />
-          </div>
-          <div class="row">
-            <input id="generate-text-input" type="text" placeholder="Describe what to generate (prompt)..." />
+          <h3 id="add-text-title">Generate text for canvas</h3>
+          <div class="row" style="position:relative; flex-direction: column; align-items: stretch;">
+            <input id="generate-text-input" type="text" placeholder="What topic you want to generate text about?" />
+            <ul id="prompt-autocomplete" aria-label="Suggestions"></ul>
+            <div id="prompt-suggestions" aria-label="Topic suggestions">
+              <button type="button" class="chip" data-topic="Product launch">Product launch</button>
+              <button type="button" class="chip" data-topic="Event invitation">Event invitation</button>
+              <button type="button" class="chip" data-topic="Discount announcement">Discount announcement</button>
+            </div>
           </div>
           <div class="actions">
             <button id="add-text-cancel" class="btn">Cancel</button>
             <button id="generate-text" class="btn" disabled>Generate</button>
             <button id="add-text-confirm" class="btn btn-primary" disabled>Add</button>
           </div>
-          <div id="generate-preview" style="margin-top:8px;color:var(--text);white-space:pre-wrap"></div>
+          <textarea id="generate-preview" style="margin-top:8px;color:#111827;background:#fff;border-radius:8px;border:1px solid rgba(0,0,0,0.2);padding:10px;width:100%;min-height:120px"></textarea>
         </div>
       </div>
     </div>
@@ -245,6 +402,7 @@
        * For text: x, y, text, color, font, maxWidth (optional)
        */
       const assets = [];
+      let backgroundLayer = null; // { type, bitmap|element|text|font|color }
       const interactionState = {
         hoveredAssetIndex: -1,
         selectedAssetIndices: new Set(),
@@ -253,6 +411,10 @@
         lastMoveClientY: 0,
         // Marquee selection
         isMarqueeSelecting: false,
+        marqueePending: false,
+        marqueePendingAdditive: false,
+        marqueePendingStartCX: 0,
+        marqueePendingStartCY: 0,
         marqueeStartCX: 0,
         marqueeStartCY: 0,
         marqueeEndCX: 0,
@@ -266,7 +428,140 @@
         resizeStartClientY: 0,
         initialSelectionBounds: null,
         initialSelectedSnapshot: null, // [{index,x,y,width,height,font}]
+        // History control for gestures
+        historyPushedInGesture: false,
+        // Hovering background video
+        hoveringBackground: false,
       };
+      // ===== Undo/Redo History =====
+      const historyStack = [];
+      const redoStack = [];
+
+      const HISTORY_LIMIT = 50;
+      const MAX_IMAGE_DIM = 2560;
+
+      function cloneAssetForHistory(a) {
+        if (!a) return null;
+        if (a.type === 'image') {
+          return { type: 'image', x: a.x, y: a.y, width: a.width, height: a.height, sourceUrl: a.sourceUrl || '' };
+        }
+        if (a.type === 'video') {
+          return { type: 'video', x: a.x, y: a.y, width: a.width, height: a.height, sourceUrl: a.sourceUrl || '' };
+        }
+        if (a.type === 'text') {
+          return { type: 'text', x: a.x, y: a.y, text: a.text, color: a.color, font: a.font, maxWidth: a.maxWidth };
+        }
+        return null;
+      }
+
+      function cloneBackgroundForHistory(bg) {
+        if (!bg) return null;
+        if (bg.type === 'image') return { type: 'image', element: bg.element || null, bitmap: bg.bitmap || null };
+        if (bg.type === 'video') return { type: 'video', element: bg.element || null, ready: !!bg.ready };
+        if (bg.type === 'text') return { type: 'text', text: bg.text || '', font: bg.font, color: bg.color };
+        return null;
+      }
+
+      function snapshotState() {
+        return {
+          assets: assets.map(cloneAssetForHistory),
+          background: cloneBackgroundForHistory(backgroundLayer),
+        };
+      }
+
+      function applySnapshot(snap) {
+        if (!snap) return;
+        // Dispose current assets' heavy resources before rebuilding
+        for (const a of assets) {
+          if (a.type === 'image' && a.bitmap && a.bitmap.close) { try { a.bitmap.close(); } catch (_) {} }
+          if (a.type === 'video' && a.element) {
+            try { a.element.pause(); } catch(_) {}
+            if (a.sourceUrl && a.sourceUrl.startsWith('blob:')) { try { URL.revokeObjectURL(a.sourceUrl); } catch (_) {} }
+            try { a.element.src = ''; a.element.load(); } catch (_) {}
+          }
+        }
+        // Dispose existing background before replacing
+        if (backgroundLayer) {
+          try {
+            if (backgroundLayer.type === 'video' && backgroundLayer.element) {
+              try { backgroundLayer.element.pause(); } catch (_) {}
+              const src = backgroundLayer.element.src || '';
+              if (typeof src === 'string' && src.startsWith('blob:')) {
+                try { URL.revokeObjectURL(src); } catch (_) {}
+              }
+              try { backgroundLayer.element.src = ''; backgroundLayer.element.load(); } catch (_) {}
+            }
+          } catch (_) {}
+        }
+        assets.splice(0, assets.length);
+        backgroundLayer = cloneBackgroundForHistory(snap.background);
+        // Recreate lightweight assets
+        for (const s of snap.assets) {
+          if (s.type === 'image') {
+            // Create a placeholder; load bitmap lazily on next draw via Image element
+            assets.push({ type: 'image', x: s.x, y: s.y, width: s.width, height: s.height, element: null, bitmap: null, loaded: false, sourceUrl: s.sourceUrl });
+            // Kick off async load
+            if (s.sourceUrl) {
+              const img = new Image(); img.crossOrigin = 'anonymous';
+              img.onload = async () => {
+                try {
+                  const iw = img.naturalWidth || img.width || 0; const ih = img.naturalHeight || img.height || 0;
+                  const scale = Math.min(1, MAX_IMAGE_DIM / Math.max(iw, ih) || 1);
+                  const rW = Math.max(1, Math.round(iw * scale)); const rH = Math.max(1, Math.round(ih * scale));
+                  const bmp = await createImageBitmap(img, { resizeWidth: rW, resizeHeight: rH, resizeQuality: 'low' });
+                  const a = assets.find(x => x.type==='image' && x.sourceUrl===s.sourceUrl && !x.loaded);
+                  if (a) { a.bitmap = bmp; a.loaded = true; a.element = null; scheduleRedraw(); }
+                } catch(_) {}
+              };
+              img.src = s.sourceUrl;
+            }
+          } else if (s.type === 'video') {
+            const v = document.createElement('video'); v.crossOrigin='anonymous'; v.playsInline = true; v.muted = true; v.loop = true; v.preload = 'metadata';
+            const a = { type: 'video', x: s.x, y: s.y, width: s.width, height: s.height, element: v, ready: false, sourceUrl: s.sourceUrl };
+            if (s.sourceUrl) v.src = s.sourceUrl;
+            v.addEventListener('loadeddata', () => { a.ready = true; scheduleRedraw(); });
+            assets.push(a);
+          } else if (s.type === 'text') {
+            assets.push({ type: 'text', x: s.x, y: s.y, text: s.text, color: s.color, font: s.font, maxWidth: s.maxWidth });
+          }
+        }
+        interactionState.selectedAssetIndices.clear();
+        interactionState.hoveredAssetIndex = -1;
+        scheduleRedraw();
+      }
+
+      function pushHistory() {
+        try {
+          historyStack.push(snapshotState());
+          redoStack.length = 0; // clear redo on new action
+          if (historyStack.length > HISTORY_LIMIT) historyStack.shift();
+        } catch (_) { /* ignore */ }
+      }
+
+      function undo() {
+        if (historyStack.length === 0) return false;
+        const current = snapshotState();
+        const prev = historyStack.pop();
+        redoStack.push(current);
+        applySnapshot(prev);
+        return true;
+      }
+
+      function redo() {
+        if (redoStack.length === 0) return false;
+        const current = snapshotState();
+        const next = redoStack.pop();
+        historyStack.push(current);
+        applySnapshot(next);
+        return true;
+      }
+
+      function pushHistoryForGesture() {
+        if (!interactionState.historyPushedInGesture) {
+          pushHistory();
+          interactionState.historyPushedInGesture = true;
+        }
+      }
       let lastGeometry = null; // { width, height, cols, rows, colWidth, rowHeight, verticals[], horizontals[] }
       // Offscreen grid cache to avoid re-drawing the grid every frame
       let gridCacheCanvas = null;
@@ -274,6 +569,13 @@
       let gridCacheBitmap = null;
       let lastCacheSignature = '';
       let isGridEnabled = false;
+      let lowQualityMode = false; // Low power mode toggle
+      // Background cache
+      let backgroundCacheCanvas = null;
+      let backgroundCacheCtx = null;
+      let backgroundCacheBitmap = null;
+      let backgroundCacheDirty = true;
+      let isCanvasVisible = true;
       // Redraw scheduler
       let redrawScheduled = false;
       function scheduleRedraw() {
@@ -284,6 +586,10 @@
           redraw();
         });
       }
+      // Suppress single-click video toggle when a double-click occurs
+      let pendingVideoClickToggle = null;
+      // Current in-canvas text edit target index; hoisted to avoid TDZ in early renders
+      let editingAssetIndex = -1;
 
       function getResponsiveColumns(canvasWidth) {
         if (canvasWidth < 600) return 4;      // mobile
@@ -316,12 +622,7 @@
           asset.x = clamp(asset.x, 0, cw - asset.width);
           asset.y = clamp(asset.y, 0, ch - asset.height);
         } else {
-          const maxW = asset.maxWidth || cw - 16;
-          asset.x = clamp(asset.x, 0, Math.max(0, cw - maxW));
-          // allow baseline inside canvas
-          const px = parseFontPx(asset.font) || 16;
-          const lineHeight = Math.round(px * 1.2);
-          asset.y = clamp(asset.y, lineHeight, ch - 4);
+          // Do not clamp text; allow it to extend beyond canvas bounds
         }
       }
 
@@ -331,8 +632,15 @@
         return Math.max(1, Math.min(Math.round(cols), maxRowsByHeight));
       }
 
+      function getTargetDpr() {
+        const natural = Math.min(2, window.devicePixelRatio || 1);
+        if (lowQualityMode) return 1;
+        if (interactionState.isMovingSelected || interactionState.isResizingSelected) return 1;
+        return natural;
+      }
+
       function resizeCanvasAndDraw() {
-        const devicePixelRatioValue = Math.min(2, window.devicePixelRatio || 1);
+        const devicePixelRatioValue = getTargetDpr();
         const rect = canvas.getBoundingClientRect();
 
         const cssWidth = Math.max(1, Math.round(rect.width));
@@ -343,8 +651,8 @@
 
         const context = canvas.getContext('2d');
         context.setTransform(devicePixelRatioValue, 0, 0, devicePixelRatioValue, 0, 0);
-        context.imageSmoothingEnabled = true;
-        context.imageSmoothingQuality = 'low';
+        context.imageSmoothingEnabled = !lowQualityMode;
+        context.imageSmoothingQuality = lowQualityMode ? 'low' : 'high';
 
         const candidateColumns = getResponsiveColumns(cssWidth);
         const maxByHeight = Math.max(1, Math.floor(cssHeight / 130));
@@ -352,6 +660,7 @@
         const finalRows = getResponsiveRows(cssWidth, cssHeight, finalColumns);
         lastGeometry = computeGeometry(cssWidth, cssHeight, finalColumns, finalRows);
         updateGridCache(lastGeometry);
+        backgroundCacheDirty = true;
         drawGrid(context, lastGeometry, interactionState);
       }
 
@@ -423,17 +732,18 @@
 
       function positionTopControlsToCanvas() {
         const topControls = document.getElementById('top-controls');
-        const gridToggle = document.getElementById('grid-toggle-floating');
+        const floating = document.getElementById('grid-toggle-floating');
         if (!topControls) return;
         const rect = canvas.getBoundingClientRect();
         topControls.style.left = `${rect.left + rect.width / 2}px`;
         topControls.style.transform = 'translateX(-50%)';
         topControls.style.width = `${Math.floor(rect.width)}px`;
-        if (gridToggle) {
+        if (floating) {
           const bottomOffset = 12; // px below canvas
           const leftOffset = 12; // px from left edge of canvas
-          gridToggle.style.left = `${rect.left + leftOffset}px`;
-          gridToggle.style.top = `${rect.bottom + bottomOffset}px`;
+          floating.style.left = `${rect.left + leftOffset}px`;
+          floating.style.top = `${rect.bottom + bottomOffset}px`;
+          floating.style.width = 'auto';
         }
       }
 
@@ -464,22 +774,11 @@
         ctx.clearRect(0, 0, width, height);
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'low';
-
-        // Pre-render cell fills
-        const totalCells = cols * rws;
-        for (let rowIndex = 0; rowIndex < rws; rowIndex += 1) {
-          for (let colIndex = 0; colIndex < cols; colIndex += 1) {
-            const cellIndex = rowIndex * cols + colIndex;
-            const hue = (cellIndex * 360) / totalCells;
-            ctx.fillStyle = `hsl(${hue} 65% 50% / 0.9)`;
-            const x = colIndex * colWidth;
-            const y = rowIndex * rowHeight;
-            ctx.fillRect(x, y, colWidth, rowHeight);
-          }
-        }
+        // Do not fill cells; draw unobtrusive grid lines only
         // Grid lines
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
-        ctx.lineWidth = 1.25;
+        // Use a dark neutral so lines are visible on white background
+        ctx.strokeStyle = 'rgba(17, 24, 39, 0.22)';
+        ctx.lineWidth = 1.0;
         ctx.beginPath();
         for (let i = 0; i < verticals.length; i += 1) {
           const x = verticals[i];
@@ -506,6 +805,85 @@
         }
       }
 
+      function updateBackgroundCache(ctx, geom) {
+        if (!backgroundLayer || !geom) { backgroundCacheBitmap = null; return; }
+        if (!backgroundCacheCanvas) {
+          backgroundCacheCanvas = document.createElement('canvas');
+          backgroundCacheCtx = backgroundCacheCanvas.getContext('2d');
+        }
+        backgroundCacheCanvas.width = Math.max(1, Math.round(geom.width));
+        backgroundCacheCanvas.height = Math.max(1, Math.round(geom.height));
+        const bctx = backgroundCacheCtx;
+        bctx.setTransform(1, 0, 0, 1, 0, 0);
+        bctx.clearRect(0, 0, backgroundCacheCanvas.width, backgroundCacheCanvas.height);
+        // Draw the background content into cache
+        drawBackgroundInto(bctx, geom);
+        // Only cache static backgrounds; skip caching when background is a video so overlays/play updates render correctly
+        if (window.createImageBitmap && backgroundLayer.type !== 'video') {
+          if (backgroundCacheBitmap && backgroundCacheBitmap.close) {
+            try { backgroundCacheBitmap.close(); } catch (_) {}
+          }
+          createImageBitmap(backgroundCacheCanvas).then((bmp) => {
+            backgroundCacheBitmap = bmp;
+            scheduleRedraw();
+          }).catch(() => { backgroundCacheBitmap = null; });
+        } else {
+          backgroundCacheBitmap = null;
+        }
+        backgroundCacheDirty = false;
+      }
+
+      function drawBackgroundInto(ctx, geom) {
+        if (!backgroundLayer || !geom) return;
+        const { width: cw, height: ch } = geom;
+        if (backgroundLayer.type === 'image') {
+          // Prefer the original HTMLImageElement for max resolution; fallback to bitmap
+          const img = backgroundLayer.element || backgroundLayer.bitmap;
+          if (!img) return;
+          const iw = img.width || img.videoWidth || (img.naturalWidth || 0);
+          const ih = img.height || img.videoHeight || (img.naturalHeight || 0);
+          if (!iw || !ih) return;
+          const scale = Math.max(cw / iw, ch / ih);
+          const dw = Math.round(iw * scale);
+          const dh = Math.round(ih * scale);
+          const dx = Math.round((cw - dw) / 2);
+          const dy = Math.round((ch - dh) / 2);
+          try {
+            ctx.save();
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(img, dx, dy, dw, dh);
+            ctx.restore();
+          } catch (_) {}
+        } else if (backgroundLayer.type === 'video') {
+          const v = backgroundLayer.element;
+          if (!v || !backgroundLayer.ready) return;
+          const iw = v.videoWidth;
+          const ih = v.videoHeight;
+          if (!iw || !ih) return;
+          const scale = Math.max(cw / iw, ch / ih);
+          const dw = Math.round(iw * scale);
+          const dh = Math.round(ih * scale);
+          const dx = Math.round((cw - dw) / 2);
+          const dy = Math.round((ch - dh) / 2);
+          try {
+            ctx.save();
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(v, dx, dy, dw, dh);
+            ctx.restore();
+          } catch (_) {}
+        } else if (backgroundLayer.type === 'text') {
+          ctx.save();
+          ctx.fillStyle = backgroundLayer.color || '#111827';
+          ctx.font = backgroundLayer.font || 'bold 48px Arial';
+          // Place with canvas margins
+          const topMargin = 24;
+          drawWrappedText(ctx, backgroundLayer.text || '', 16, topMargin, cw - 32);
+          ctx.restore();
+        }
+      }
+
       function drawGrid(context, geom, _state) {
         const { width, height } = geom;
         context.clearRect(0, 0, width, height);
@@ -514,6 +892,22 @@
         context.fillStyle = '#ffffff';
         context.fillRect(0, 0, width, height);
         context.restore();
+        // Draw background layer beneath grid and assets
+        if (backgroundLayer) {
+          if (backgroundLayer.type === 'video') {
+            // Always draw live video frame; do not use cache for videos
+            drawBackgroundInto(context, geom);
+          } else {
+            if (backgroundCacheDirty) updateBackgroundCache(context, geom);
+            if (backgroundCacheBitmap) {
+              context.drawImage(backgroundCacheBitmap, 0, 0, width, height);
+            } else if (backgroundCacheCanvas) {
+              context.drawImage(backgroundCacheCanvas, 0, 0, width, height);
+            } else {
+              drawBackgroundInto(context, geom);
+            }
+          }
+        }
         if (isGridEnabled) {
           if (gridCacheBitmap) {
             context.drawImage(gridCacheBitmap, 0, 0, width, height);
@@ -523,6 +917,39 @@
         }
         renderAssets(context);
         drawMarquee(context);
+        // Foreground background-video overlay (draw ABOVE grid and assets)
+        if (backgroundLayer && backgroundLayer.type === 'video' && backgroundLayer.element && backgroundLayer.ready && interactionState.hoveringBackground) {
+          const cw = width, ch = height;
+          const v = backgroundLayer.element;
+          const isPlaying = !v.paused && !v.ended;
+          const centerX = Math.round(cw / 2);
+          const centerY = Math.round(ch / 2);
+          const radius = Math.max(18, Math.min(36, Math.floor(Math.min(cw, ch) * 0.04)));
+          context.save();
+          context.globalAlpha = 0.9;
+          context.fillStyle = 'rgba(17,24,39,0.65)';
+          context.beginPath();
+          context.arc(centerX, centerY, radius + 8, 0, Math.PI * 2);
+          context.fill();
+          context.globalAlpha = 1;
+          context.fillStyle = 'white';
+          if (isPlaying) {
+            const bw = Math.max(4, Math.floor(radius * 0.35));
+            const gap = Math.max(4, Math.floor(radius * 0.25));
+            const bh = Math.floor(radius * 1.2);
+            context.fillRect(centerX - gap - bw, centerY - Math.floor(bh / 2), bw, bh);
+            context.fillRect(centerX + gap, centerY - Math.floor(bh / 2), bw, bh);
+          } else {
+            const triR = Math.floor(radius * 1.2);
+            context.beginPath();
+            context.moveTo(centerX - Math.floor(triR * 0.45), centerY - Math.floor(triR * 0.65));
+            context.lineTo(centerX - Math.floor(triR * 0.45), centerY + Math.floor(triR * 0.65));
+            context.lineTo(centerX + Math.floor(triR * 0.85), centerY);
+            context.closePath();
+            context.fill();
+          }
+          context.restore();
+        }
         context.strokeStyle = 'rgba(255, 255, 255, 0.5)';
         context.lineWidth = 1.25;
         context.strokeRect(0, 0, width, height);
@@ -557,6 +984,10 @@
 
       window.addEventListener('resize', () => { updateCanvasAspectFromUI(); positionTopControlsToCanvas(); });
       window.addEventListener('scroll', () => { positionTopControlsToCanvas(); }, { passive: true });
+      // Track page visibility to pause video redraws
+      document.addEventListener('visibilitychange', () => {
+        isCanvasVisible = document.visibilityState === 'visible';
+      });
       if (window.ResizeObserver) {
         const observer = new ResizeObserver(() => resizeCanvasAndDraw());
         observer.observe(canvas);
@@ -584,56 +1015,243 @@
 
       // Grid toggle button
       const gridToggleBtn = document.getElementById('toggle-grid-btn');
+      const videosToggleBtn = document.getElementById('toggle-videos-btn');
       if (gridToggleBtn) {
         gridToggleBtn.addEventListener('click', () => {
           isGridEnabled = !isGridEnabled;
           gridToggleBtn.classList.toggle('active', isGridEnabled);
           gridToggleBtn.setAttribute('aria-pressed', String(isGridEnabled));
+          // Ensure the grid cache is up-to-date when toggled
+          if (lastGeometry) updateGridCache(lastGeometry);
           scheduleRedraw();
         });
       }
+      // Play/pause all videos control
+      function anyVideoPlaying() {
+        const anyAsset = assets.some(a => a.type === 'video' && a.element && !a.element.paused && !a.element.ended);
+        const bg = backgroundLayer && backgroundLayer.type === 'video' && backgroundLayer.element && !backgroundLayer.element.paused && !backgroundLayer.element.ended;
+        return anyAsset || bg;
+      }
+      function anyVideosPresent() {
+        const anyAsset = assets.some(a => a.type === 'video');
+        const anyBg = !!(backgroundLayer && backgroundLayer.type === 'video');
+        return anyAsset || anyBg;
+      }
+      function allVideosReadyAndPlaying() {
+        const assetVideos = assets.filter(a => a.type === 'video' && a.element);
+        const allAssetPlaying = assetVideos.length > 0 && assetVideos.every(v => !v.element.paused && !v.element.ended);
+        const hasBg = backgroundLayer && backgroundLayer.type === 'video' && backgroundLayer.element;
+        const bgPlaying = hasBg ? (!backgroundLayer.element.paused && !backgroundLayer.element.ended) : true;
+        const hasAny = assetVideos.length > 0 || hasBg;
+        return hasAny && allAssetPlaying && bgPlaying;
+      }
+      function refreshVideosToggleIcon() {
+        if (!videosToggleBtn) return;
+        const hasAny = anyVideosPresent();
+        const playingSome = hasAny && anyVideoPlaying();
+        // If at least one is playing, show pause icon; otherwise show play icon
+        const iconPause = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>';
+        const iconPlay = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
+        videosToggleBtn.innerHTML = playingSome ? iconPause : iconPlay;
+        videosToggleBtn.setAttribute('aria-label', playingSome ? 'Pause all videos' : 'Play all videos');
+        videosToggleBtn.classList.toggle('active', playingSome);
+        videosToggleBtn.setAttribute('aria-pressed', String(playingSome));
+        // Disable when there are no videos present
+        videosToggleBtn.disabled = !hasAny;
+        videosToggleBtn.setAttribute('aria-disabled', String(!hasAny));
+      }
+      function playAllVideos() {
+        let any = false;
+        for (const a of assets) {
+          if (a.type === 'video' && a.element) {
+            try { a.element.play().catch(()=>{}); any = true; } catch(_) {}
+          }
+        }
+        if (backgroundLayer && backgroundLayer.type === 'video' && backgroundLayer.element) {
+          try { backgroundLayer.element.play().catch(()=>{}); any = true; } catch(_) {}
+        }
+        if (any) scheduleRedraw();
+      }
+      function pauseAllVideos() {
+        let any = false;
+        for (const a of assets) {
+          if (a.type === 'video' && a.element) {
+            try { a.element.pause(); any = true; } catch(_) {}
+          }
+        }
+        if (backgroundLayer && backgroundLayer.type === 'video' && backgroundLayer.element) {
+          try { backgroundLayer.element.pause(); any = true; } catch(_) {}
+        }
+        if (any) scheduleRedraw();
+      }
+      if (videosToggleBtn) {
+        videosToggleBtn.addEventListener('click', () => {
+          if (anyVideoPlaying()) pauseAllVideos(); else playAllVideos();
+          refreshVideosToggleIcon();
+        });
+        // Initialize state
+        refreshVideosToggleIcon();
+      }
+      // Low power mode via keyboard: Cmd/Ctrl+L
+      window.addEventListener('keydown', (e) => {
+        const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+        const mod = isMac ? e.metaKey : e.ctrlKey;
+        if (mod && (e.key === 'l' || e.key === 'L')) {
+          lowQualityMode = !lowQualityMode;
+          backgroundCacheDirty = true;
+          resizeCanvasAndDraw();
+          e.preventDefault();
+        }
+      });
+
+      // Prioritize app shortcuts over browser defaults in capture phase
+      function isMacPlatform() { return /Mac|iPod|iPhone|iPad/.test(navigator.platform); }
+      function isModKey(e) { return isMacPlatform() ? e.metaKey : e.ctrlKey; }
+      document.addEventListener('keydown', (e) => {
+        if (!isModKey(e)) return;
+        const key = String(e.key || '').toLowerCase();
+        // Intercept common conflicting shortcuts
+        if (key === 'z' || key === 'x' || key === 'c' || key === 'v') {
+          e.preventDefault();
+        }
+      }, { capture: true });
 
       // Add text overlay logic
-      const openAddText = document.getElementById('open-add-text');
       const openGenerateText = document.getElementById('open-generate-text');
       const addTextOverlay = document.getElementById('add-text-overlay');
-      const addTextInput = document.getElementById('add-text-input');
       const generateTextInput = document.getElementById('generate-text-input');
+      const promptSuggestions = document.getElementById('prompt-suggestions');
+      const promptAutocomplete = document.getElementById('prompt-autocomplete');
       const addTextCancel = document.getElementById('add-text-cancel');
       const addTextConfirm = document.getElementById('add-text-confirm');
       const generateTextBtn = document.getElementById('generate-text');
       const generatePreview = document.getElementById('generate-preview');
+      const inlineAddInput = document.getElementById('inline-add-text-input');
+      const inlineAddBtn = document.getElementById('inline-add-text-btn');
       function openTextOverlay() {
         addTextOverlay.classList.add('show');
-        setTimeout(() => { addTextInput.focus(); }, 0);
+        setTimeout(() => { generateTextInput.focus(); }, 0);
       }
       function closeTextOverlay() {
         addTextOverlay.classList.remove('show');
-        addTextInput.value = '';
         generateTextInput.value = '';
-        generatePreview.textContent = '';
+        // Ensure textarea is cleared correctly
+        generatePreview.value = '';
         addTextConfirm.disabled = true;
         generateTextBtn.disabled = true;
       }
       function confirmAddText() {
-        const text = (generatePreview.textContent.trim() || addTextInput.value.trim());
-        if (!text) { addTextInput.focus(); return; }
+        const text = (generatePreview.value.trim());
+        if (!text) { generateTextInput.focus(); return; }
         const rect = canvas.getBoundingClientRect();
         const x = Math.round(rect.width / 2 - 120);
         const y = Math.round(rect.height / 2);
+        pushHistory();
         addTextAsset(text, x, y, { color: '#111827', font: 'bold 32px Arial' });
         closeTextOverlay();
       }
-      if (openAddText) openAddText.addEventListener('click', openTextOverlay);
+      // Open generator dialog
       if (openGenerateText) openGenerateText.addEventListener('click', openTextOverlay);
       if (addTextCancel) addTextCancel.addEventListener('click', closeTextOverlay);
       if (addTextConfirm) addTextConfirm.addEventListener('click', confirmAddText);
-      addTextInput && addTextInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { confirmAddText(); e.preventDefault(); }
-        if (e.key === 'Escape') { closeTextOverlay(); e.preventDefault(); }
-      });
+      // Inline Add Your Text behavior
+      function canInlineAdd() { return inlineAddInput && inlineAddInput.value.trim().length > 0; }
+      function refreshInlineAddState() {
+        if (!inlineAddBtn) return;
+        inlineAddBtn.disabled = !canInlineAdd();
+      }
+      if (inlineAddInput) {
+        inlineAddInput.addEventListener('input', refreshInlineAddState);
+        inlineAddInput.addEventListener('keyup', refreshInlineAddState);
+        inlineAddInput.addEventListener('change', refreshInlineAddState);
+        inlineAddInput.addEventListener('paste', () => setTimeout(refreshInlineAddState, 0));
+        inlineAddInput.addEventListener('focus', refreshInlineAddState);
+        inlineAddInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && canInlineAdd()) {
+            e.preventDefault();
+            inlineAddBtn && inlineAddBtn.click();
+          }
+        });
+      }
+      if (inlineAddBtn) {
+        inlineAddBtn.addEventListener('click', () => {
+          if (!inlineAddInput) return;
+          const text = inlineAddInput.value.trim();
+          if (!text) return;
+          const rect = canvas.getBoundingClientRect();
+          const x = Math.round(rect.width / 2 - 120);
+          const y = Math.round(rect.height / 2);
+          pushHistory();
+          addTextAsset(text, x, y, { color: '#111827', font: 'bold 32px Arial' });
+          inlineAddInput.value = '';
+          refreshInlineAddState();
+        });
+        // Ensure correct initial state in case of autofill or browser restoring value
+        setTimeout(refreshInlineAddState, 0);
+      }
+      // Seed topics click to fill prompt
+      if (promptSuggestions) {
+        promptSuggestions.addEventListener('click', (e) => {
+          const btn = e.target && e.target.closest && e.target.closest('.chip');
+          if (!btn) return;
+          const topic = btn.getAttribute('data-topic') || btn.textContent || '';
+          generateTextInput.value = topic;
+          generateTextInput.dispatchEvent(new Event('input'));
+          generateTextInput.focus();
+        });
+      }
+
+      // Simple word suggestion dictionary
+      const WORD_SUGGESTIONS = ['announcement','launch','offer','exclusive','today','limited','save','sale','join','discover','experience','unveil','introducing','celebrate','event','register','now','new','update','improve','features','benefits'];
+
+      function updateAutocomplete() {
+        if (!promptAutocomplete) return;
+        const text = (generateTextInput.value || '');
+        const last = text.split(/\s+/).pop() || '';
+        const q = last.toLowerCase();
+        const matches = q.length >= 2 ? WORD_SUGGESTIONS.filter(w => w.startsWith(q)).slice(0, 8) : [];
+        promptAutocomplete.innerHTML = '';
+        if (matches.length === 0) {
+          promptAutocomplete.classList.remove('show');
+          return;
+        }
+        for (const m of matches) {
+          const li = document.createElement('li');
+          li.textContent = m;
+          promptAutocomplete.appendChild(li);
+        }
+        // Position under input
+        const rect = generateTextInput.getBoundingClientRect();
+        promptAutocomplete.style.position = 'fixed';
+        promptAutocomplete.style.left = `${Math.round(rect.left)}px`;
+        promptAutocomplete.style.top = `${Math.round(rect.bottom + 4)}px`;
+        promptAutocomplete.style.minWidth = `${Math.round(rect.width)}px`;
+        promptAutocomplete.classList.add('show');
+      }
+
+      if (promptAutocomplete) {
+        promptAutocomplete.addEventListener('mousedown', (e) => {
+          const li = e.target && e.target.closest && e.target.closest('li');
+          if (!li) return;
+          const word = li.textContent || '';
+          const parts = generateTextInput.value.split(/\s+/);
+          parts.pop();
+          parts.push(word);
+          generateTextInput.value = parts.join(' ');
+          generateTextInput.dispatchEvent(new Event('input'));
+          promptAutocomplete.classList.remove('show');
+          e.preventDefault();
+        });
+      }
+
       generateTextInput && generateTextInput.addEventListener('input', () => {
         generateTextBtn.disabled = generateTextInput.value.trim().length === 0;
+        updateAutocomplete();
+      });
+      generateTextInput && generateTextInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          promptAutocomplete && promptAutocomplete.classList.remove('show');
+        }
       });
       // Streaming generation via OpenAI Chat Completions (acts as Cursor backend). Set your key once in DevTools:
       // localStorage.setItem('OPENAI_API_KEY', 'sk-...')
@@ -721,16 +1339,16 @@
       generateTextBtn && generateTextBtn.addEventListener('click', () => {
         const prompt = generateTextInput.value.trim();
         if (!prompt) return;
-        generatePreview.textContent = '';
+        generatePreview.value = '';
         addTextConfirm.disabled = true;
         generateTextBtn.disabled = true;
         streamGenerateText(
           prompt,
           (chunk) => {
-            generatePreview.textContent += chunk;
+            generatePreview.value += chunk;
           },
           () => {
-            addTextConfirm.disabled = generatePreview.textContent.trim().length === 0;
+            addTextConfirm.disabled = generatePreview.value.trim().length === 0;
             generateTextBtn.disabled = false;
           },
           () => {
@@ -753,6 +1371,10 @@
         // Draw images and videos
         for (let i = 0; i < assets.length; i += 1) {
           const item = assets[i];
+          // While editing a text asset, do not draw the underlying text on canvas to avoid visual duplication
+          if (typeof editingAssetIndex === 'number' && editingAssetIndex === i && item.type === 'text') {
+            continue;
+          }
           if (item.type === 'image' && item.loaded) {
             try {
               if (item.bitmap) {
@@ -769,6 +1391,39 @@
             } catch (_) {
               // drawImage can throw if a frame isn't ready yet; skip this frame
             }
+            // Draw hover play/pause overlay icon
+            if (interactionState.hoveredAssetIndex === i) {
+              const isPlaying = !item.element.paused && !item.element.ended;
+              const centerX = item.x + Math.round(item.width / 2);
+              const centerY = item.y + Math.round(item.height / 2);
+              const radius = Math.max(16, Math.min(28, Math.floor(Math.min(item.width, item.height) * 0.08)));
+              ctx.save();
+              ctx.globalAlpha = 0.85;
+              ctx.fillStyle = 'rgba(17,24,39,0.75)';
+              ctx.beginPath();
+              ctx.arc(centerX, centerY, radius + 6, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.globalAlpha = 1;
+              ctx.fillStyle = 'white';
+              if (isPlaying) {
+                // Pause icon: two vertical bars
+                const bw = Math.max(3, Math.floor(radius * 0.35));
+                const gap = Math.max(3, Math.floor(radius * 0.25));
+                const bh = Math.floor(radius * 1.2);
+                ctx.fillRect(centerX - gap - bw, centerY - Math.floor(bh / 2), bw, bh);
+                ctx.fillRect(centerX + gap, centerY - Math.floor(bh / 2), bw, bh);
+              } else {
+                // Play icon: right-pointing triangle
+                const triR = Math.floor(radius * 1.2);
+                ctx.beginPath();
+                ctx.moveTo(centerX - Math.floor(triR * 0.45), centerY - Math.floor(triR * 0.65));
+                ctx.lineTo(centerX - Math.floor(triR * 0.45), centerY + Math.floor(triR * 0.65));
+                ctx.lineTo(centerX + Math.floor(triR * 0.85), centerY);
+                ctx.closePath();
+                ctx.fill();
+              }
+              ctx.restore();
+            }
           } else if (item.type === 'text') {
             ctx.save();
             ctx.fillStyle = item.color || '#ffffff';
@@ -779,8 +1434,8 @@
         }
         // Draw hover/selection outlines on top
         drawAssetOutlines(ctx);
-        // If any videos are present, keep updating frames
-        if (assets.some((a) => a.type === 'video')) {
+        // If any videos are actively playing, keep updating frames
+        if (isCanvasVisible && (assets.some((a) => a.type === 'video' && a.element && !a.element.paused && !a.element.ended) || (backgroundLayer && backgroundLayer.type === 'video' && backgroundLayer.ready && backgroundLayer.element && !backgroundLayer.element.paused && !backgroundLayer.element.ended))) {
           requestAnimationFrame(() => {
             const ctx2 = canvas.getContext('2d');
             drawGrid(ctx2, lastGeometry, {});
@@ -791,13 +1446,14 @@
       function drawAssetOutlines(ctx) {
         const hovered = interactionState.hoveredAssetIndex;
         const selectedSet = interactionState.selectedAssetIndices;
+        const isEditingText = typeof editingAssetIndex === 'number' && editingAssetIndex >= 0;
         // Helper to compute bounds for an asset
         function getBounds(asset) { return getAssetBoundsForCanvas(ctx, asset); }
         function strokeRectStyled(b, color, lineWidth, dash = []) {
           ctx.save();
           ctx.strokeStyle = color;
           ctx.lineWidth = lineWidth;
-          ctx.setLineDash(dash);
+          if (!lowQualityMode) ctx.setLineDash(dash);
           ctx.strokeRect(b.x - 1, b.y - 1, b.w + 2, b.h + 2);
           ctx.restore();
         }
@@ -813,7 +1469,7 @@
             if (only >= 0 && only < assets.length) {
               const b = getBounds(assets[only]);
               strokeRectStyled(b, 'rgba(79, 70, 229, 1)', 3); // indigo solid
-              drawResizeHandles(ctx, b);
+              if (!isEditingText) drawResizeHandles(ctx, b);
             }
           } else {
             // Multi-select: show a single bounding box around all selected assets
@@ -829,7 +1485,7 @@
             if (isFinite(minX) && isFinite(minY) && isFinite(maxX) && isFinite(maxY)) {
               const b = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
               strokeRectStyled(b, 'rgba(79, 70, 229, 1)', 3); // indigo solid
-              drawResizeHandles(ctx, b);
+              if (!isEditingText) drawResizeHandles(ctx, b);
             }
           }
         }
@@ -841,13 +1497,15 @@
             c.save();
             const isActive = interactionState.activeHandle === key;
             const isHover = interactionState.hoveredHandle === key;
-            c.beginPath();
-            c.arc(pt.x, pt.y, r, 0, Math.PI * 2);
-            c.fillStyle = isActive ? 'rgba(79,70,229,1)' : (isHover ? 'rgba(99,102,241,0.9)' : 'rgba(255,255,255,0.95)');
-            c.fill();
-            c.lineWidth = 2;
-            c.strokeStyle = 'rgba(17,24,39,0.9)';
-            c.stroke();
+            if (!lowQualityMode) {
+              c.beginPath();
+              c.arc(pt.x, pt.y, r, 0, Math.PI * 2);
+              c.fillStyle = isActive ? 'rgba(79,70,229,1)' : (isHover ? 'rgba(99,102,241,0.9)' : 'rgba(255,255,255,0.95)');
+              c.fill();
+              c.lineWidth = 2;
+              c.strokeStyle = 'rgba(17,24,39,0.9)';
+              c.stroke();
+            }
             c.restore();
           }
         }
@@ -897,17 +1555,21 @@
       function addImageAsset(src, x, y, width, height) {
         const img = new Image();
         img.crossOrigin = 'anonymous';
-        const asset = { type: 'image', x, y, width, height, element: null, bitmap: null, loaded: false };
+        const asset = { type: 'image', x, y, width, height, element: null, bitmap: null, loaded: false, sourceUrl: src, naturalWidth: 0, naturalHeight: 0 };
         img.onload = async () => {
           try {
             if (window.createImageBitmap) {
-              const bmp = await createImageBitmap(img, { resizeWidth: Math.max(1, Math.round(width)), resizeHeight: Math.max(1, Math.round(height)), resizeQuality: 'low' });
+              const iw = img.naturalWidth || img.width || 0; const ih = img.naturalHeight || img.height || 0;
+              const scale = Math.min(1, MAX_IMAGE_DIM / Math.max(iw, ih) || 1);
+              const rW = Math.max(1, Math.round(iw * scale)); const rH = Math.max(1, Math.round(ih * scale));
+              const bmp = await createImageBitmap(img, { resizeWidth: rW, resizeHeight: rH, resizeQuality: 'low' });
               asset.bitmap = bmp;
-              // Release the HTMLImageElement reference; bitmap is retained
               asset.element = null;
             } else {
               asset.element = img;
             }
+            asset.naturalWidth = img.naturalWidth || img.width || 0;
+            asset.naturalHeight = img.naturalHeight || img.height || 0;
           } catch (_) {
             asset.element = img;
           } finally {
@@ -928,7 +1590,19 @@
       function addImageAssetFromElement(imgEl, x, y, width, height) {
         // Fit inside canvas if larger
         const fitted = fitRectToCanvas(width, height);
-        const asset = { type: 'image', x, y, width: fitted.width, height: fitted.height, element: imgEl, bitmap: null, loaded: true };
+        const asset = {
+          type: 'image',
+          x,
+          y,
+          width: fitted.width,
+          height: fitted.height,
+          element: imgEl,
+          bitmap: null,
+          loaded: true,
+          sourceUrl: imgEl.currentSrc || imgEl.src || '',
+          naturalWidth: imgEl.naturalWidth || 0,
+          naturalHeight: imgEl.naturalHeight || 0,
+        };
         clampAssetWithinCanvas(asset);
         assets.push(asset);
         scheduleRedraw();
@@ -936,6 +1610,7 @@
           createImageBitmap(imgEl, { resizeWidth: Math.max(1, Math.round(asset.width)), resizeHeight: Math.max(1, Math.round(asset.height)), resizeQuality: 'low' })
             .then((bmp) => {
               asset.bitmap = bmp;
+              // Drop element to reduce memory once we have a bitmap
               asset.element = null;
               scheduleRedraw();
             })
@@ -946,7 +1621,7 @@
         return asset;
       }
 
-      function addVideoAsset(src, x, y, width, height, { muted = true, loop = true, autoplay = true } = {}) {
+      function addVideoAsset(src, x, y, width, height, { muted = true, loop = true, autoplay = false } = {}) {
         // Fit inside canvas if larger
         const fitted = fitRectToCanvas(width, height);
         const video = document.createElement('video');
@@ -954,11 +1629,13 @@
         video.muted = muted;
         video.loop = loop;
         video.playsInline = true;
+        video.preload = 'metadata';
         const asset = { type: 'video', x, y, width: fitted.width, height: fitted.height, element: video, ready: false };
         clampAssetWithinCanvas(asset);
         video.addEventListener('loadeddata', () => {
           asset.ready = true;
           scheduleRedraw();
+          refreshVideosToggleIcon();
           if (video.requestVideoFrameCallback) {
             const tick = () => {
               if (!asset.ready) return;
@@ -968,11 +1645,16 @@
             video.requestVideoFrameCallback(() => tick());
           }
         });
+        // Keep toggle state in sync with play/pause
+        video.addEventListener('play', refreshVideosToggleIcon);
+        video.addEventListener('pause', refreshVideosToggleIcon);
+        video.addEventListener('ended', refreshVideosToggleIcon);
         video.src = src;
         if (autoplay) {
           video.play().catch(() => {});
         }
         assets.push(asset);
+        refreshVideosToggleIcon();
         return asset;
       }
 
@@ -988,7 +1670,7 @@
           font: options.font || '24px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial',
           maxWidth: options.maxWidth || maxWidth,
         };
-        clampAssetWithinCanvas(asset);
+        // Do not auto-clamp/scale text within canvas bounds
         assets.push(asset);
         const ctx = canvas.getContext('2d');
         drawGrid(ctx, lastGeometry, {});
@@ -1005,6 +1687,9 @@
         const m = String(fontString).match(/(\d+(?:\.\d+)?)px/);
         return m ? parseFloat(m[1]) : null;
       }
+
+      // Cache for text metrics to avoid recomputation
+      const textMeasureCache = new Map(); // key: font+'|'+maxW+'|'+text
 
       function drawWrappedText(ctx, text, x, y, maxWidth) {
         const { width: cw } = getCanvasDimensions();
@@ -1030,8 +1715,16 @@
       function measureWrappedText(ctx, text, maxWidth) {
         const { width: cw } = getCanvasDimensions();
         const limit = Math.max(120, Math.min(maxWidth || cw - 16, cw - 16));
+        const key = ctx.font + '|' + limit + '|' + (text || '');
+        const cached = textMeasureCache.get(key);
+        if (cached) return cached;
         const words = String(text || '').split(/\s+/);
-        const lineHeight = Math.round((parseFontPx(ctx.font) || 16) * 1.2);
+        const fontPx = parseFontPx(ctx.font) || 16;
+        const lineHeight = Math.round(fontPx * 1.2);
+        // Measure ascent/descent using a representative sample
+        const tm = ctx.measureText('Mg');
+        const ascent = Math.round(tm.actualBoundingBoxAscent || fontPx * 0.8);
+        const descent = Math.round(tm.actualBoundingBoxDescent || fontPx * 0.2);
         let line = '';
         let maxLineWidth = 0;
         let lines = 0;
@@ -1050,7 +1743,10 @@
           maxLineWidth = Math.max(maxLineWidth, ctx.measureText(line).width);
           lines += 1;
         }
-        return { width: Math.min(limit, Math.round(maxLineWidth)), lines, height: Math.max(lineHeight, lines * lineHeight), lineHeight };
+        const height = Math.max(ascent + descent, ascent + descent + (lines - 1) * lineHeight);
+        const res = { width: Math.min(limit, Math.round(maxLineWidth)), lines, height, lineHeight, ascent, descent };
+        textMeasureCache.set(key, res);
+        return res;
       }
 
       function getAssetBoundsForCanvas(ctx, asset) {
@@ -1059,8 +1755,8 @@
           ctx.font = asset.font || '16px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial';
           const m = measureWrappedText(ctx, asset.text || '', asset.maxWidth);
           ctx.restore();
-          // top-left box; y is baseline of first line; approximate top by one line height
-          return { x: asset.x, y: asset.y - m.lineHeight + 4, w: m.width, h: m.height };
+          // top-left box; y is baseline minus ascent for accurate top alignment
+          return { x: asset.x, y: asset.y - (m.ascent || m.lineHeight), w: m.width, h: m.height };
         }
         return { x: asset.x, y: asset.y, w: asset.width, h: asset.height };
       }
@@ -1094,7 +1790,8 @@
         const { lines, lineHeight } = wrapTextLines(ctx, text, maxWidth);
         ctx.restore();
         const lineIdx = Math.max(0, Math.min(lines.length - 1, Math.floor(clickY / lineHeight)));
-        const beforeChars = lines.slice(0, lineIdx).reduce((n, s) => n + s.length + 1, 0); // +1 for implied space/newline
+        // Sum of characters in prior wrapped lines; do not add phantom newline/space
+        const beforeChars = lines.slice(0, lineIdx).reduce((n, s) => n + s.length, 0);
         const lineText = lines[lineIdx] || '';
         let posInLine = lineText.length;
         let acc = '';
@@ -1110,6 +1807,7 @@
         assets.splice(0, assets.length);
         const ctx = canvas.getContext('2d');
         drawGrid(ctx, lastGeometry, {});
+        refreshVideosToggleIcon();
       }
 
       // Expose a small API for programmatic placement with pixel precision
@@ -1119,11 +1817,77 @@
         addTextAsset,
         clearAssets,
         get assets() { return assets; },
+        get background() { return backgroundLayer; },
       };
 
       // Optional: clicking images in the Content panel places them centered in the canvas
       const contentPanel = document.querySelector('.content-images');
       if (contentPanel) {
+        // Upload asset handlers
+        const uploadBtn = document.getElementById('upload-asset');
+        const uploadInput = document.getElementById('upload-asset-input');
+        if (uploadBtn && uploadInput) {
+          uploadBtn.addEventListener('click', () => uploadInput.click());
+          uploadInput.addEventListener('change', (e) => {
+            const files = Array.from(uploadInput.files || []);
+            if (files.length === 0) return;
+            const MAX_BYTES = 50 * 1024 * 1024; // 50MB per asset
+            const allowedImageTypes = ['image/png','image/jpeg','image/webp','image/gif','image/heic','image/heif'];
+            const allowedVideoTypes = ['video/mp4','video/webm','video/quicktime'];
+            let warned = false;
+            const rect = canvas.getBoundingClientRect();
+            for (const file of files) {
+              if (file.size > MAX_BYTES) { if (!warned) { alert('Some files exceed the 50MB limit and were skipped.'); warned = true; } continue; }
+              // Normalize/guess type when the browser leaves it empty or as octet-stream
+              const name = (file.name || '').toLowerCase();
+              let effType = file.type || '';
+              if (!effType || effType === 'application/octet-stream') {
+                if (name.endsWith('.mp4') || name.endsWith('.m4v')) effType = 'video/mp4';
+                else if (name.endsWith('.webm')) effType = 'video/webm';
+                else if (name.endsWith('.mov')) effType = 'video/quicktime';
+                else if (name.endsWith('.heic')) effType = 'image/heic';
+                else if (name.endsWith('.heif')) effType = 'image/heif';
+                else if (name.endsWith('.png')) effType = 'image/png';
+                else if (name.endsWith('.jpg') || name.endsWith('.jpeg')) effType = 'image/jpeg';
+                else if (name.endsWith('.webp')) effType = 'image/webp';
+                else if (name.endsWith('.gif')) effType = 'image/gif';
+              }
+              if (effType.startsWith('image/')) {
+                if (!allowedImageTypes.includes(effType)) { if (!warned) { alert('Unsupported image format. Allowed: PNG, JPEG, WEBP, GIF, HEIC (browser support required).'); warned = true; } continue; }
+                const reader = new FileReader();
+                reader.onload = () => {
+                  const img = new Image();
+                  img.onload = () => {
+                    pushHistory();
+                    const placeW = Math.min(rect.width * 0.5, 640);
+                    const ratio = img.height / img.width;
+                    const placeH = Math.round(placeW * ratio);
+                    const x = Math.round((rect.width - placeW) / 2);
+                    const y = Math.round((rect.height - placeH) / 2);
+                    addImageAssetFromElement(img, x, y, Math.round(placeW), Math.round(placeH));
+                  };
+                  img.onerror = () => {
+                    alert('This image cannot be decoded in your browser. If the file is HEIC/HEIF, please convert to PNG/JPEG or use a browser with HEIC support.');
+                  };
+                  img.src = reader.result;
+                };
+                reader.readAsDataURL(file);
+              } else if (effType.startsWith('video/')) {
+                if (!allowedVideoTypes.includes(effType)) { if (!warned) { alert('Unsupported video format. Allowed: MP4 (H.264/AAC), WebM, MOV (H.264/AAC).'); warned = true; } continue; }
+                const url = URL.createObjectURL(file);
+                pushHistory();
+                let placeW = Math.min(rect.width * 0.6, 720);
+                const placeH = Math.round(placeW * (9 / 16));
+                const x = Math.round((rect.width - placeW) / 2);
+                const y = Math.round((rect.height - placeH) / 2);
+                const a = addVideoAsset(url, x, y, Math.round(placeW), Math.round(placeH));
+                if (a) a.sourceUrl = url;
+                refreshVideosToggleIcon();
+              }
+            }
+            uploadInput.value = '';
+          });
+        }
         // Click to add (kept) – supports image, text, video
         let suppressClickOnce = false;
         contentPanel.addEventListener('click', (e) => {
@@ -1134,6 +1898,7 @@
           if (!type || isDragging) return;
           const rect = canvas.getBoundingClientRect();
           if (type === 'image') {
+            pushHistory();
             const placeW = Math.min(rect.width * 0.4, 360);
             const ratio = assetEl.naturalWidth && assetEl.naturalHeight ? assetEl.naturalHeight / assetEl.naturalWidth : (320 / 480);
             const placeH = placeW * ratio;
@@ -1141,10 +1906,12 @@
             const y = Math.round((rect.height - placeH) / 2);
             addImageAssetFromElement(assetEl, x, y, Math.round(placeW), Math.round(placeH));
           } else if (type === 'text') {
+            pushHistory();
             const x = Math.round(rect.width / 2 - 120);
             const y = Math.round(rect.height / 2);
             addTextAsset(assetEl.dataset.text || assetEl.textContent || 'Text', x, y, { color: assetEl.dataset.color, font: assetEl.dataset.font });
           } else if (type === 'video') {
+            pushHistory();
             const placeW = Math.min(rect.width * 0.5, 420);
             const placeH = Math.round(placeW * (9 / 16));
             const x = Math.round((rect.width - placeW) / 2);
@@ -1233,6 +2000,7 @@
             const rect = canvas.getBoundingClientRect();
             const type = dragSourceEl.dataset.assetType;
             if (type === 'image') {
+              pushHistory();
               let placeW = Math.min(rect.width * 0.4, 360);
               const ratio = (dragSourceEl.naturalHeight && dragSourceEl.naturalWidth) ? (dragSourceEl.naturalHeight / dragSourceEl.naturalWidth) : (320 / 480);
               placeW = Math.round(placeW * 0.9);
@@ -1241,18 +2009,21 @@
               const y = Math.round(e.clientY - rect.top - placeH / 2);
               addImageAssetFromElement(dragSourceEl, x, y, Math.round(placeW), Math.round(placeH));
             } else if (type === 'text') {
+              pushHistory();
               const x = Math.round(e.clientX - rect.left - 60);
               const y = Math.round(e.clientY - rect.top);
               const originalFont = dragSourceEl.dataset.font || dragSourceEl.style.font || '';
               const scaledFont = scaleFontPx(originalFont, 0.9);
               addTextAsset(dragSourceEl.dataset.text || dragSourceEl.textContent || 'Text', x, y, { color: dragSourceEl.dataset.color, font: scaledFont });
             } else if (type === 'video') {
+              pushHistory();
               let placeW = Math.min(rect.width * 0.5, 420);
               placeW = Math.round(placeW * 0.9);
               const placeH = Math.round(placeW * (9 / 16));
               const x = Math.round(e.clientX - rect.left - placeW / 2);
               const y = Math.round(e.clientY - rect.top - placeH / 2);
               addVideoAsset(dragSourceEl.dataset.src, x, y, Math.round(placeW), Math.round(placeH));
+            refreshVideosToggleIcon();
             }
             suppressClickOnce = true; // prevent duplicate centered add
           }
@@ -1279,6 +2050,406 @@
         return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
       }
 
+      // ===== Context menu (right-click) =====
+      const ctxMenu = document.getElementById('context-menu');
+      const ctxSetBg = document.getElementById('ctx-set-bg');
+      const ctxDelete = document.getElementById('ctx-delete');
+      let contextTargetIndex = -1;
+
+      function hideContextMenu() {
+        if (!ctxMenu) return;
+        ctxMenu.style.display = 'none';
+        ctxMenu.setAttribute('aria-hidden', 'true');
+        contextTargetIndex = -1;
+      }
+
+      function showContextMenu(x, y, idx, { mode = 'asset' } = {}) {
+        if (!ctxMenu) return;
+        contextTargetIndex = idx;
+        // Position within viewport bounds
+        const vw = window.innerWidth, vh = window.innerHeight;
+        const menuW = 200, menuH = 100;
+        const left = Math.max(0, Math.min(x, vw - menuW));
+        const top = Math.max(0, Math.min(y, vh - menuH));
+        ctxMenu.style.left = `${left}px`;
+        ctxMenu.style.top = `${top}px`;
+        ctxMenu.style.display = 'block';
+        ctxMenu.setAttribute('aria-hidden', 'false');
+        // Toggle visible options based on mode
+        const isBackgroundMode = mode === 'background';
+        const setDisplay = (el, show) => { if (el) el.style.display = show ? 'flex' : 'none'; };
+        setDisplay(document.getElementById('ctx-set-bg'), !isBackgroundMode);
+        setDisplay(document.getElementById('ctx-delete'), !isBackgroundMode);
+        setDisplay(document.getElementById('ctx-duplicate'), !isBackgroundMode);
+        setDisplay(document.getElementById('ctx-cut'), !isBackgroundMode);
+        setDisplay(document.getElementById('ctx-bring-front'), !isBackgroundMode);
+        setDisplay(document.getElementById('ctx-bring-forward'), !isBackgroundMode);
+        setDisplay(document.getElementById('ctx-send-back'), !isBackgroundMode);
+        setDisplay(document.getElementById('ctx-send-backward'), !isBackgroundMode);
+        setDisplay(document.getElementById('ctx-bgd-detach'), isBackgroundMode);
+        setDisplay(document.getElementById('ctx-bgd-delete'), isBackgroundMode);
+        // Enable/disable
+        if (!isBackgroundMode) {
+          if (ctxSetBg) ctxSetBg.disabled = (idx < 0);
+          if (ctxDelete) ctxDelete.disabled = (idx < 0);
+          // Z-index controls availability
+          const maxIndex = Math.max(0, assets.length - 1);
+          const atTop = idx >= maxIndex;
+          const atBottom = idx <= 0;
+          const bringFrontEl = document.getElementById('ctx-bring-front');
+          const bringForwardEl = document.getElementById('ctx-bring-forward');
+          const sendBackEl = document.getElementById('ctx-send-back');
+          const sendBackwardEl = document.getElementById('ctx-send-backward');
+          if (bringFrontEl) bringFrontEl.disabled = atTop || idx < 0;
+          if (bringForwardEl) bringForwardEl.disabled = atTop || idx < 0;
+          if (sendBackEl) sendBackEl.disabled = atBottom || idx < 0;
+          if (sendBackwardEl) sendBackwardEl.disabled = atBottom || idx < 0;
+        }
+      }
+
+      function setAssetAsBackground(idx) {
+        if (idx < 0 || idx >= assets.length) return;
+        const selected = assets[idx];
+        if (!selected) return;
+
+        // 1) Capture previous background (if any)
+        const previousBackground = backgroundLayer ? { ...backgroundLayer } : null;
+
+        // Record history BEFORE mutations
+        pushHistory();
+
+        // 2) Remove selected asset from canvas
+        assets.splice(idx, 1);
+        interactionState.selectedAssetIndices.delete(idx);
+        interactionState.hoveredAssetIndex = -1;
+
+        // 3) Promote selected asset to background
+        if (selected.type === 'image') {
+          backgroundLayer = { type: 'image', element: selected.element || null, bitmap: selected.bitmap || null };
+        } else if (selected.type === 'video') {
+          backgroundLayer = { type: 'video', element: selected.element, ready: selected.ready };
+          try { selected.element && selected.element.pause && selected.element.pause(); } catch (_) {}
+        } else if (selected.type === 'text') {
+          backgroundLayer = { type: 'text', text: selected.text || '', font: selected.font, color: selected.color };
+        }
+        // Invalidate cached background rendering
+        backgroundCacheDirty = true;
+
+        // 4) If there was a previous background, convert it into a normal asset and add back to canvas
+        if (previousBackground) {
+          const { width: cw, height: ch } = getCanvasDimensions();
+          if (previousBackground.type === 'image') {
+            // Prefer element when restoring to preserve resolution
+            const img = previousBackground.element || previousBackground.bitmap;
+            const iw = img && (img.width || img.naturalWidth || 0);
+            const ih = img && (img.height || img.naturalHeight || 0);
+            const placeW = Math.max(40, Math.round(Math.min(cw * 0.5, 420)));
+            const ratio = iw && ih ? ih / iw : (9 / 16);
+            const placeH = Math.max(40, Math.round(placeW * ratio));
+            const x = Math.round((cw - placeW) / 2);
+            const y = Math.round((ch - placeH) / 2);
+            const asset = { type: 'image', x, y, width: placeW, height: placeH, element: previousBackground.element || null, bitmap: previousBackground.bitmap || null, loaded: true };
+            clampAssetWithinCanvas(asset);
+            assets.push(asset);
+          } else if (previousBackground.type === 'video') {
+            const v = previousBackground.element;
+            const iw = (v && v.videoWidth) || 0;
+            const ih = (v && v.videoHeight) || 0;
+            const placeW = Math.max(60, Math.round(Math.min(cw * 0.6, 520)));
+            const ratio = iw && ih ? ih / iw : (9 / 16);
+            const placeH = Math.max(60, Math.round(placeW * ratio));
+            const x = Math.round((cw - placeW) / 2);
+            const y = Math.round((ch - placeH) / 2);
+            const asset = { type: 'video', x, y, width: placeW, height: placeH, element: v, ready: !!previousBackground.ready, sourceUrl: (previousBackground.element && previousBackground.element.src) || '' };
+            clampAssetWithinCanvas(asset);
+            try { v && v.pause && v.pause(); } catch (_) {}
+            assets.push(asset);
+          } else if (previousBackground.type === 'text') {
+            const x = 32;
+            const y = 64;
+            const asset = { type: 'text', x, y, text: previousBackground.text || '', color: previousBackground.color || '#111827', font: previousBackground.font || 'bold 32px Arial', maxWidth: Math.max(120, cw - 64) };
+            clampAssetWithinCanvas(asset);
+            assets.push(asset);
+          }
+        }
+
+        hideContextMenu();
+        scheduleRedraw();
+      }
+
+      if (ctxSetBg) ctxSetBg.addEventListener('click', () => { setAssetAsBackground(contextTargetIndex); });
+      if (ctxDelete) ctxDelete.addEventListener('click', () => {
+        const idx = contextTargetIndex;
+        if (idx >= 0 && idx < assets.length) {
+          assets.splice(idx, 1);
+          interactionState.selectedAssetIndices.delete(idx);
+          interactionState.hoveredAssetIndex = -1;
+          scheduleRedraw();
+          refreshVideosToggleIcon();
+        }
+        hideContextMenu();
+      });
+      const ctxDetach = document.getElementById('ctx-bgd-detach');
+      const ctxBgdDelete = document.getElementById('ctx-bgd-delete');
+      const ctxDuplicate = document.getElementById('ctx-duplicate');
+      const ctxCut = document.getElementById('ctx-cut');
+      const ctxBringFront = document.getElementById('ctx-bring-front');
+      const ctxBringForward = document.getElementById('ctx-bring-forward');
+      const ctxSendBack = document.getElementById('ctx-send-back');
+      const ctxSendBackward = document.getElementById('ctx-send-backward');
+      if (ctxDetach) ctxDetach.addEventListener('click', () => {
+        pushHistory();
+        if (!backgroundLayer) { hideContextMenu(); return; }
+        const { width: cw, height: ch } = getCanvasDimensions();
+        if (backgroundLayer.type === 'image') {
+          const el = backgroundLayer.element || backgroundLayer.bitmap;
+          const iw = el && (el.width || el.naturalWidth || 0);
+          const ih = el && (el.height || el.naturalHeight || 0);
+          const placeW = Math.max(40, Math.round(Math.min(cw * 0.5, 420)));
+          const ratio = iw && ih ? ih / iw : (9 / 16);
+          const placeH = Math.max(40, Math.round(placeW * ratio));
+          const x = Math.round((cw - placeW) / 2);
+          const y = Math.round((ch - placeH) / 2);
+          const asset = { type: 'image', x, y, width: placeW, height: placeH, element: backgroundLayer.element || null, bitmap: backgroundLayer.bitmap || null, loaded: true };
+          clampAssetWithinCanvas(asset);
+          assets.push(asset);
+        } else if (backgroundLayer.type === 'video') {
+          const v = backgroundLayer.element;
+          const iw = (v && v.videoWidth) || 0;
+          const ih = (v && v.videoHeight) || 0;
+          const placeW = Math.max(60, Math.round(Math.min(cw * 0.6, 520)));
+          const ratio = iw && ih ? ih / iw : (9 / 16);
+          const placeH = Math.max(60, Math.round(placeW * ratio));
+          const x = Math.round((cw - placeW) / 2);
+          const y = Math.round((ch - placeH) / 2);
+          const asset = { type: 'video', x, y, width: placeW, height: placeH, element: v, ready: true };
+          clampAssetWithinCanvas(asset);
+          try { v && v.pause && v.pause(); } catch (_) {}
+          assets.push(asset);
+        } else if (backgroundLayer.type === 'text') {
+          const x = 32;
+          const y = 64;
+          const asset = { type: 'text', x, y, text: backgroundLayer.text || '', color: backgroundLayer.color || '#111827', font: backgroundLayer.font || 'bold 32px Arial', maxWidth: Math.max(120, cw - 64) };
+          clampAssetWithinCanvas(asset);
+          assets.push(asset);
+        }
+        backgroundLayer = null;
+        // Invalidate and clear cached background so stale image isn't drawn
+        backgroundCacheDirty = true;
+        if (backgroundCacheBitmap && backgroundCacheBitmap.close) { try { backgroundCacheBitmap.close(); } catch (_) {} }
+        backgroundCacheBitmap = null;
+        if (backgroundCacheCanvas && backgroundCacheCtx) {
+          backgroundCacheCtx.setTransform(1,0,0,1,0,0);
+          backgroundCacheCtx.clearRect(0,0,backgroundCacheCanvas.width, backgroundCacheCanvas.height);
+        }
+        hideContextMenu();
+        scheduleRedraw();
+        refreshVideosToggleIcon();
+      });
+      if (ctxBgdDelete) ctxBgdDelete.addEventListener('click', () => {
+        pushHistory();
+        if (backgroundLayer && backgroundLayer.type === 'video') {
+          try { backgroundLayer.element && backgroundLayer.element.pause && backgroundLayer.element.pause(); } catch (_) {}
+        }
+        backgroundLayer = null;
+        // Invalidate and clear cached background so stale image isn't drawn
+        backgroundCacheDirty = true;
+        if (backgroundCacheBitmap && backgroundCacheBitmap.close) { try { backgroundCacheBitmap.close(); } catch (_) {} }
+        backgroundCacheBitmap = null;
+        if (backgroundCacheCanvas && backgroundCacheCtx) {
+          backgroundCacheCtx.setTransform(1,0,0,1,0,0);
+          backgroundCacheCtx.clearRect(0,0,backgroundCacheCanvas.width, backgroundCacheCanvas.height);
+        }
+        hideContextMenu();
+        scheduleRedraw();
+        refreshVideosToggleIcon();
+      });
+
+      function bringToFront(index) {
+        if (index < 0 || index >= assets.length) return;
+        const a = assets.splice(index, 1)[0];
+        assets.push(a);
+      }
+      function bringForward(index) {
+        if (index < 0 || index >= assets.length - 1) return;
+        const tmp = assets[index];
+        assets[index] = assets[index + 1];
+        assets[index + 1] = tmp;
+      }
+      function sendToBack(index) {
+        if (index < 0 || index >= assets.length) return;
+        const a = assets.splice(index, 1)[0];
+        assets.unshift(a);
+      }
+      function sendBackward(index) {
+        if (index <= 0 || index >= assets.length) return;
+        const tmp = assets[index];
+        assets[index] = assets[index - 1];
+        assets[index - 1] = tmp;
+      }
+
+      if (ctxBringFront) ctxBringFront.addEventListener('click', () => {
+        const idx = contextTargetIndex;
+        if (idx >= 0) { pushHistory(); bringToFront(idx); scheduleRedraw(); }
+        hideContextMenu();
+      });
+      if (ctxBringForward) ctxBringForward.addEventListener('click', () => {
+        const idx = contextTargetIndex;
+        if (idx >= 0) { pushHistory(); bringForward(idx); scheduleRedraw(); }
+        hideContextMenu();
+      });
+      if (ctxSendBack) ctxSendBack.addEventListener('click', () => {
+        const idx = contextTargetIndex;
+        if (idx >= 0) { pushHistory(); sendToBack(idx); scheduleRedraw(); }
+        hideContextMenu();
+      });
+      if (ctxSendBackward) ctxSendBackward.addEventListener('click', () => {
+        const idx = contextTargetIndex;
+        if (idx >= 0) { pushHistory(); sendBackward(idx); scheduleRedraw(); }
+        hideContextMenu();
+        refreshVideosToggleIcon();
+      });
+
+      function cloneAsset(a) {
+        if (!a) return null;
+        if (a.type === 'image') {
+          // Do not share element/bitmap; keep source URL to recreate fresh instance
+          return { type: 'image', x: a.x, y: a.y, width: a.width, height: a.height, sourceUrl: a.sourceUrl || (a.element && a.element.currentSrc) || (a.element && a.element.src) || '' };
+        }
+        if (a.type === 'video') {
+          // Do not share the same HTMLVideoElement when cloning; capture only geometry and source
+          return { type: 'video', x: a.x, y: a.y, width: a.width, height: a.height, sourceUrl: a.sourceUrl || (a.element && a.element.src) || '' };
+        }
+        if (a.type === 'text') {
+          return { type: 'text', x: a.x, y: a.y, text: a.text, color: a.color, font: a.font, maxWidth: a.maxWidth };
+        }
+        return null;
+      }
+
+      // Clipboard-like state for copy/cut/paste
+      let clipboardAsset = null;
+      let clipboardIsCut = false;
+      let clipboardSourceRef = null; // reference to original asset used for copy/duplicate series
+      const PASTE_STEP = 12;
+      let lastPastePosition = null; // tracks last pasted position for cumulative offset
+
+      function doCopy() {
+        // Copy first selected asset (top-most selected)
+        const selected = Array.from(interactionState.selectedAssetIndices).sort((a,b)=>a-b);
+        if (selected.length === 0) return false;
+        const a = assets[selected[0]];
+        clipboardAsset = cloneAsset(a);
+        clipboardIsCut = false;
+        clipboardSourceRef = a;
+        lastPastePosition = null;
+        return !!clipboardAsset;
+      }
+      function doCut() {
+        const selected = Array.from(interactionState.selectedAssetIndices).sort((a,b)=>a-b);
+        if (selected.length === 0) return false;
+        const idx = selected[0];
+        const a = assets[idx];
+        clipboardAsset = cloneAsset(a);
+        clipboardIsCut = true;
+        clipboardSourceRef = a;
+        lastPastePosition = null;
+        // Remove asset
+        assets.splice(idx, 1);
+        interactionState.selectedAssetIndices.clear();
+        interactionState.hoveredAssetIndex = -1;
+        scheduleRedraw();
+        return !!clipboardAsset;
+      }
+      function doPaste() {
+        if (!clipboardAsset) return false;
+        const pasted = cloneAsset(clipboardAsset);
+        if (!pasted) return false;
+        // Determine base position: last pasted position if available, else clipboard origin
+        const baseX = (lastPastePosition ? lastPastePosition.x : (pasted.x || 0));
+        const baseY = (lastPastePosition ? lastPastePosition.y : (pasted.y || 0));
+        pasted.x = Math.round(baseX + PASTE_STEP);
+        pasted.y = Math.round(baseY + PASTE_STEP);
+        // Insert pasted asset. For media, create fresh HTML elements so instances are independent.
+        if (pasted.type === 'video') {
+          const src = pasted.sourceUrl || '';
+          const a = addVideoAsset(src, pasted.x, pasted.y, pasted.width || 320, pasted.height || 180);
+          // select new asset
+          interactionState.selectedAssetIndices.clear();
+          interactionState.selectedAssetIndices.add(assets.length - 1);
+        } else if (pasted.type === 'image') {
+          const src = pasted.sourceUrl || '';
+          const a = addImageAsset(src, pasted.x, pasted.y, pasted.width || 160, pasted.height || 120);
+          interactionState.selectedAssetIndices.clear();
+          interactionState.selectedAssetIndices.add(assets.length - 1);
+        } else {
+          clampAssetWithinCanvas(pasted);
+          assets.push(pasted);
+          interactionState.selectedAssetIndices.clear();
+          interactionState.selectedAssetIndices.add(assets.length - 1);
+        }
+        scheduleRedraw();
+        lastPastePosition = { x: pasted.x, y: pasted.y };
+        if (clipboardIsCut) {
+          // After first paste of a cut, clear the clipboard
+          clipboardAsset = null;
+          clipboardIsCut = false;
+          clipboardSourceRef = null;
+          lastPastePosition = null;
+        }
+        return true;
+      }
+
+      if (ctxDuplicate) ctxDuplicate.addEventListener('click', () => {
+        // Ensure clipboard is initialized from current selection if needed, otherwise reuse to keep cumulative offset
+        const selected = Array.from(interactionState.selectedAssetIndices).sort((a,b)=>a-b);
+        if (selected.length > 0) {
+          const a = assets[selected[0]];
+          if (!clipboardAsset || clipboardSourceRef !== a) {
+            clipboardAsset = cloneAsset(a);
+            clipboardIsCut = false;
+            clipboardSourceRef = a;
+            lastPastePosition = null;
+          }
+        }
+        pushHistory();
+        doPaste();
+        hideContextMenu();
+      });
+      if (ctxCut) ctxCut.addEventListener('click', () => {
+        doCut();
+        hideContextMenu();
+      });
+
+      canvas.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const idx = findAssetAtCanvasPoint(e.clientX, e.clientY);
+        if (idx >= 0) {
+          showContextMenu(e.clientX, e.clientY, idx, { mode: 'asset' });
+          return;
+        }
+        // If click hit no asset, but background exists and click is inside canvas, open background menu
+        if (backgroundLayer) {
+          const rect = canvas.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          const y = e.clientY - rect.top;
+          if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) {
+            showContextMenu(e.clientX, e.clientY, -1, { mode: 'background' });
+            return;
+          }
+        }
+        hideContextMenu();
+      });
+
+      window.addEventListener('mousedown', (e) => {
+        const target = e.target;
+        if (!ctxMenu) return;
+        if (ctxMenu.style.display === 'block') {
+          if (!(target === ctxMenu || (target && ctxMenu.contains(target)))) hideContextMenu();
+        }
+      });
+      window.addEventListener('scroll', hideContextMenu, { passive: true });
+      window.addEventListener('resize', hideContextMenu);
+
       // ===== Asset hover/selection on canvas =====
       function findAssetAtCanvasPoint(clientX, clientY) {
         if (!lastGeometry) return -1;
@@ -1303,6 +2474,24 @@
             interactionState.hoveredAssetIndex = idx;
             canvas.style.cursor = idx >= 0 ? 'pointer' : 'default';
             scheduleRedraw();
+          }
+          // Update cursor icon when hovering video to suggest click-to-toggle
+          if (idx >= 0 && assets[idx] && assets[idx].type === 'video') {
+            canvas.style.cursor = 'pointer';
+          }
+          // Track background hover when no asset under cursor and background is a video
+          if (idx === -1 && backgroundLayer && backgroundLayer.type === 'video') {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) {
+              if (!interactionState.hoveringBackground) { interactionState.hoveringBackground = true; scheduleRedraw(); }
+              canvas.style.cursor = 'pointer';
+            } else {
+              if (interactionState.hoveringBackground) { interactionState.hoveringBackground = false; scheduleRedraw(); }
+            }
+          } else {
+            if (interactionState.hoveringBackground) { interactionState.hoveringBackground = false; scheduleRedraw(); }
           }
           // Handle hover
           if (interactionState.selectedAssetIndices.size > 0) {
@@ -1331,12 +2520,20 @@
           canvas.style.cursor = 'default';
           scheduleRedraw();
         }
+        if (interactionState.hoveringBackground) {
+          interactionState.hoveringBackground = false;
+          scheduleRedraw();
+        }
       });
 
       canvas.addEventListener('mousedown', (e) => {
+        if (e.button === 2) { // ignore right-click for drag/select logic; handled by contextmenu
+          return;
+        }
+        const hitIdx = findAssetAtCanvasPoint(e.clientX, e.clientY);
         // Ignore if sidebar drag is active
         if (document.body.classList.contains('is-dragging-asset')) return;
-        const idx = findAssetAtCanvasPoint(e.clientX, e.clientY);
+        const idx = hitIdx;
         // Resize priority: if a handle is hovered, start resizing selection
         const rect = canvas.getBoundingClientRect();
         const ctx = canvas.getContext('2d');
@@ -1395,59 +2592,156 @@
             interactionState.selectedAssetIndices.clear();
             scheduleRedraw();
           }
-          // Start marquee selection
+          // Prepare marquee selection; only activate on small movement threshold in mousemove
           const rect = canvas.getBoundingClientRect();
-          interactionState.isMarqueeSelecting = true;
-          interactionState.marqueeStartCX = e.clientX - rect.left;
-          interactionState.marqueeStartCY = e.clientY - rect.top;
-          interactionState.marqueeEndCX = interactionState.marqueeStartCX;
-          interactionState.marqueeEndCY = interactionState.marqueeStartCY;
-          interactionState.marqueeAdditive = isMulti;
-          canvas.style.cursor = 'crosshair';
-          e.preventDefault();
+          interactionState.marqueePending = true;
+          interactionState.marqueePendingStartCX = e.clientX - rect.left;
+          interactionState.marqueePendingStartCY = e.clientY - rect.top;
+          interactionState.marqueePendingAdditive = isMulti;
+          // Do not prevent default so click events can fire (for background play/pause)
+        }
+      });
+
+      // Single-click toggles play/pause (asset or background), canceled if a double-click follows
+      canvas.addEventListener('click', (e) => {
+        // If a marquee drag is about to start, don't toggle playback
+        if (interactionState.isMarqueeSelecting) return;
+        const idx = findAssetAtCanvasPoint(e.clientX, e.clientY);
+        if (idx >= 0) {
+          const a = assets[idx];
+          if (!a || a.type !== 'video' || !a.element) return;
+          // Only toggle when clicking on the overlay control in the center
+          const rect = canvas.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          const y = e.clientY - rect.top;
+          const centerX = a.x + Math.round(a.width / 2);
+          const centerY = a.y + Math.round(a.height / 2);
+          const radius = Math.max(16, Math.min(28, Math.floor(Math.min(a.width, a.height) * 0.08)));
+          const hitR = radius + 8; // include background circle padding
+          const dx = x - centerX;
+          const dy = y - centerY;
+          if (dx * dx + dy * dy > hitR * hitR) return; // click outside overlay
+          if (pendingVideoClickToggle) return; // already pending
+          pendingVideoClickToggle = setTimeout(() => {
+            const v = a.element;
+            try {
+              if (v.paused || v.ended) { v.play().catch(()=>{}); } else { v.pause(); }
+            } catch(_) {}
+            pendingVideoClickToggle = null;
+            scheduleRedraw();
+            refreshVideosToggleIcon();
+          }, 220);
+          return;
+        }
+        // If no asset was hit but background is a video and pointer is inside canvas, toggle background
+        if (idx === -1 && backgroundLayer && backgroundLayer.type === 'video') {
+          const rect = canvas.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          const y = e.clientY - rect.top;
+          if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) {
+            // Only toggle when clicking on the overlay control in the center
+            const cw = lastGeometry ? lastGeometry.width : rect.width;
+            const ch = lastGeometry ? lastGeometry.height : rect.height;
+            const centerX = Math.round(cw / 2);
+            const centerY = Math.round(ch / 2);
+            const radius = Math.max(18, Math.min(36, Math.floor(Math.min(cw, ch) * 0.04)));
+            const hitR = radius + 10;
+            const dx = x - centerX;
+            const dy = y - centerY;
+            if (dx * dx + dy * dy > hitR * hitR) return; // click outside overlay
+            if (pendingVideoClickToggle) return;
+            pendingVideoClickToggle = setTimeout(() => {
+              const v = backgroundLayer.element;
+              try {
+                if (v) {
+                  // Ensure background is considered dirty so it redraws while playing
+                  backgroundCacheDirty = true;
+                  const playPromise = v.paused || v.ended ? v.play() : (v.pause(), Promise.resolve());
+                  if (playPromise && typeof playPromise.then === 'function') {
+                    playPromise.catch(() => {});
+                  }
+                }
+              } catch(_) {}
+              pendingVideoClickToggle = null;
+              scheduleRedraw();
+              refreshVideosToggleIcon();
+            }, 220);
+          }
         }
       });
 
       // Move selected assets with pointer
       window.addEventListener('mousemove', (e) => {
         if (interactionState.isResizingSelected) {
+          pushHistoryForGesture();
           const start = interactionState.initialSelectionBounds;
           if (!start) return;
           const cx = e.clientX;
           const cy = e.clientY;
           const dx = cx - interactionState.resizeStartClientX;
           const dy = cy - interactionState.resizeStartClientY;
-          // Compute scale based on active handle movement, uniform scaling to preserve aspect
+          // Compute scale based on active handle movement
           let scaleX = 1, scaleY = 1;
           if (interactionState.activeHandle === 'se') { scaleX = (start.w + dx) / start.w; scaleY = (start.h + dy) / start.h; }
           if (interactionState.activeHandle === 'ne') { scaleX = (start.w + dx) / start.w; scaleY = (start.h - dy) / start.h; }
           if (interactionState.activeHandle === 'sw') { scaleX = (start.w - dx) / start.w; scaleY = (start.h + dy) / start.h; }
           if (interactionState.activeHandle === 'nw') { scaleX = (start.w - dx) / start.w; scaleY = (start.h - dy) / start.h; }
-          let s = Math.max(0.05, Math.max(scaleX, scaleY));
-          // Apply scale relative to top-left of selection (start.x, start.y)
+          // Clamp minimal scale
+          let sX = Math.max(0.05, scaleX);
+          let sY = Math.max(0.05, scaleY);
+          const lockAspect = true;
+          // If locking aspect (SHIFT), use uniform scale s
+          let s = Math.max(sX, sY);
+
+          // Choose anchor based on opposite corner of the active handle
+          let anchorX = start.x;
+          let anchorY = start.y;
+          if (interactionState.activeHandle === 'se') { anchorX = start.x;             anchorY = start.y; }
+          if (interactionState.activeHandle === 'ne') { anchorX = start.x;             anchorY = start.y + start.h; }
+          if (interactionState.activeHandle === 'sw') { anchorX = start.x + start.w;   anchorY = start.y; }
+          if (interactionState.activeHandle === 'nw') { anchorX = start.x + start.w;   anchorY = start.y + start.h; }
+
           const { width: cw, height: ch } = getCanvasDimensions();
           for (const snap of interactionState.initialSelectedSnapshot || []) {
             const a = assets[snap.index];
             if (!a) continue;
-            const relX = snap.x - start.x;
-            const relY = snap.y - start.y;
-            if (snap.type === 'text') {
-              a.x = Math.round(start.x + relX * s);
-              a.y = Math.round(start.y + relY * s);
-              a.font = scaleFontPx(snap.font || '16px Arial', s);
-              a.maxWidth = Math.min(a.maxWidth || cw - 16, cw - 16);
+            const relX = snap.x - anchorX;
+            const relY = snap.y - anchorY;
+            if (lockAspect) {
+              // Uniform scaling when SHIFT is held
+              if (snap.type === 'text') {
+                a.x = Math.round(anchorX + relX * s);
+                a.y = Math.round(anchorY + relY * s);
+                a.font = scaleFontPx(snap.font || '16px Arial', s);
+              } else {
+                a.x = Math.round(anchorX + relX * s);
+                a.y = Math.round(anchorY + relY * s);
+                a.width = Math.max(8, Math.round((snap.width || 0) * s));
+                a.height = Math.max(8, Math.round((snap.height || 0) * s));
+                // Constrain within canvas during preview
+                a.width = Math.min(a.width, cw - 1);
+                a.height = Math.min(a.height, ch - 1);
+              }
             } else {
-              a.x = Math.round(start.x + relX * s);
-              a.y = Math.round(start.y + relY * s);
-              a.width = Math.max(8, Math.round((snap.width || 0) * s));
-              a.height = Math.max(8, Math.round((snap.height || 0) * s));
-              // Constrain within canvas during preview
-              a.width = Math.min(a.width, cw - 1);
-              a.height = Math.min(a.height, ch - 1);
+              // Free (non-uniform) scaling when SHIFT is not held
+              if (snap.type === 'text') {
+                // Keep text uniform to avoid distortion; use max of axes for font scale
+                a.x = Math.round(anchorX + relX * sX);
+                a.y = Math.round(anchorY + relY * sY);
+                a.font = scaleFontPx(snap.font || '16px Arial', Math.max(sX, sY));
+              } else {
+                a.x = Math.round(anchorX + relX * sX);
+                a.y = Math.round(anchorY + relY * sY);
+                a.width = Math.max(8, Math.round((snap.width || 0) * sX));
+                a.height = Math.max(8, Math.round((snap.height || 0) * sY));
+                a.width = Math.min(a.width, cw - 1);
+                a.height = Math.min(a.height, ch - 1);
+              }
             }
           }
           scheduleRedraw();
         } else if (interactionState.isMovingSelected) {
+          pushHistoryForGesture();
           const dx = e.clientX - interactionState.lastMoveClientX;
           const dy = e.clientY - interactionState.lastMoveClientY;
           if (dx === 0 && dy === 0) return;
@@ -1461,38 +2755,56 @@
           clampAssetWithinCanvas(a);
           }
           scheduleRedraw();
-        } else if (interactionState.isMarqueeSelecting) {
+        } else if (interactionState.marqueePending || interactionState.isMarqueeSelecting) {
           const rect = canvas.getBoundingClientRect();
-          interactionState.marqueeEndCX = e.clientX - rect.left;
-          interactionState.marqueeEndCY = e.clientY - rect.top;
-          scheduleRedraw();
+          const cx = e.clientX - rect.left;
+          const cy = e.clientY - rect.top;
+          if (interactionState.marqueePending) {
+            const dx = Math.abs(cx - interactionState.marqueePendingStartCX);
+            const dy = Math.abs(cy - interactionState.marqueePendingStartCY);
+            const THRESH = 3; // px
+            if (dx > THRESH || dy > THRESH) {
+              interactionState.isMarqueeSelecting = true;
+              interactionState.marqueePending = false;
+              interactionState.marqueeStartCX = interactionState.marqueePendingStartCX;
+              interactionState.marqueeStartCY = interactionState.marqueePendingStartCY;
+              interactionState.marqueeAdditive = interactionState.marqueePendingAdditive;
+              canvas.style.cursor = 'crosshair';
+            }
+          }
+          if (interactionState.isMarqueeSelecting) {
+            interactionState.marqueeEndCX = cx;
+            interactionState.marqueeEndCY = cy;
+            scheduleRedraw();
+          }
         }
       });
 
       window.addEventListener('mouseup', () => {
+        interactionState.historyPushedInGesture = false;
         if (interactionState.isResizingSelected) {
           interactionState.isResizingSelected = false;
           interactionState.activeHandle = null;
           canvas.style.cursor = 'default';
+          // Refresh at high quality after gesture ends
+          resizeCanvasAndDraw();
           // Final clamp into canvas after resize ends
-          for (const idx of interactionState.selectedAssetIndices) {
-            const a = assets[idx];
-            if (!a) continue;
-            clampAssetWithinCanvas(a);
-          }
+          // Do not clamp text; non-text remain clamped via other flows
         }
         if (interactionState.isMovingSelected) {
           interactionState.isMovingSelected = false;
           canvas.style.cursor = 'default';
+          resizeCanvasAndDraw();
         }
         if (interactionState.isMarqueeSelecting) {
           finalizeMarqueeSelection();
         }
+        // Clear pending marquee if it never activated (treated as click)
+        interactionState.marqueePending = false;
       });
 
       // ===== In-canvas text editing =====
       const textEditor = document.getElementById('canvas-text-editor');
-      let editingAssetIndex = -1;
 
       function endTextEdit(commit = true) {
         if (editingAssetIndex >= 0) {
@@ -1515,12 +2827,11 @@
         ctx.font = a.font || '16px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial';
         const bounds = getAssetBoundsForCanvas(ctx, a);
         const rect = canvas.getBoundingClientRect();
-        const left = rect.left + bounds.x - 4;
-        const top = rect.top + bounds.y - 2;
-        textEditor.style.left = `${Math.round(left)}px`;
-        textEditor.style.top = `${Math.round(top)}px`;
-        textEditor.style.width = `${Math.max(80, Math.round(Math.min(bounds.w + 8, rect.width - bounds.x - 8)))}px`;
-        textEditor.style.height = `${Math.max(24, Math.round(bounds.h + 6))}px`;
+        // Align editor exactly to text bounds; add 1px left padding to avoid caret on border
+        textEditor.style.left = `${Math.round(rect.left + bounds.x)}px`;
+        textEditor.style.top = `${Math.round(rect.top + bounds.y)}px`;
+        textEditor.style.width = `${Math.max(1, Math.round(Math.min(bounds.w, rect.width - bounds.x)))}px`;
+        textEditor.style.height = `${Math.max(1, Math.round(bounds.h))}px`;
         textEditor.style.font = a.font || '16px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial';
         textEditor.value = a.text || '';
         textEditor.style.display = 'block';
@@ -1534,6 +2845,18 @@
 
       canvas.addEventListener('dblclick', (e) => {
         const idx = findAssetAtCanvasPoint(e.clientX, e.clientY);
+        // If double-clicked a video, cancel pending single-click toggle and do nothing
+        if (idx >= 0 && assets[idx].type === 'video') {
+          if (pendingVideoClickToggle) { clearTimeout(pendingVideoClickToggle); pendingVideoClickToggle = null; }
+          e.preventDefault();
+          return;
+        }
+        // Cancel pending single-click for background video as well
+        if (idx === -1 && backgroundLayer && backgroundLayer.type === 'video') {
+          if (pendingVideoClickToggle) { clearTimeout(pendingVideoClickToggle); pendingVideoClickToggle = null; }
+          e.preventDefault();
+          return;
+        }
         if (idx >= 0 && assets[idx].type === 'text') {
           if (!interactionState.selectedAssetIndices.has(idx)) {
             interactionState.selectedAssetIndices.clear();
@@ -1552,6 +2875,26 @@
       textEditor.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); endTextEdit(true); }
         if (e.key === 'Escape') { e.preventDefault(); endTextEdit(false); }
+      });
+      // Word and paragraph selection shortcuts inside editor
+      textEditor.addEventListener('dblclick', (e) => {
+        // select word
+        const v = textEditor.value;
+        const pos = textEditor.selectionStart;
+        const reLeft = /\w+$/; const reRight = /^\w+/;
+        const left = v.slice(0, pos).match(reLeft);
+        const right = v.slice(pos).match(reRight);
+        const start = left ? pos - left[0].length : pos;
+        const end = right ? pos + right[0].length : pos;
+        textEditor.setSelectionRange(start, end);
+        e.preventDefault();
+      });
+      textEditor.addEventListener('click', (e) => {
+        // triple-click to select all
+        if (e.detail === 3) {
+          textEditor.select();
+          e.preventDefault();
+        }
       });
       // Clicking outside commits
       window.addEventListener('mousedown', (e) => {
@@ -1602,12 +2945,9 @@
           if (a.type === 'text') {
             ctx.save();
             ctx.font = a.font || '16px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial';
-            const width = Math.max(1, Math.round(ctx.measureText(a.text || '').width));
-            const match = (a.font || '').match(/(\d+(?:\.\d+)?)px/);
-            const fontPx = match ? parseFloat(match[1]) : 16;
-            const height = Math.max(1, Math.round(fontPx * 1.2));
+            const metrics = measureWrappedText(ctx, a.text || '', a.maxWidth);
             ctx.restore();
-            b = { x: a.x, y: a.y - height + 4, w: width, h: height };
+            b = { x: a.x, y: a.y - metrics.lineHeight, w: metrics.width, h: metrics.height };
           } else {
             b = { x: a.x, y: a.y, w: a.width, h: a.height };
           }
@@ -1622,6 +2962,19 @@
 
       // Keyboard nudge for selected assets
       window.addEventListener('keydown', (e) => {
+        // Handle copy/cut/paste shortcuts
+        const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+        const mod = isMac ? e.metaKey : e.ctrlKey;
+        if (mod && (e.key === 'z' || e.key === 'Z')) {
+          // Undo / Redo (with Shift)
+          if (e.shiftKey) { if (redo()) e.preventDefault(); }
+          else { if (undo()) e.preventDefault(); }
+          return;
+        }
+        if (mod && (e.key === 'c' || e.key === 'C')) { const ok = doCopy(); if (ok) e.preventDefault(); return; }
+        if (mod && (e.key === 'x' || e.key === 'X')) { pushHistory(); const ok = doCut(); if (ok) e.preventDefault(); return; }
+        if (mod && (e.key === 'v' || e.key === 'V')) { pushHistory(); const ok = doPaste(); if (ok) e.preventDefault(); return; }
+
         const arrows = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
         if (!arrows.includes(e.key)) return;
         if (interactionState.selectedAssetIndices.size === 0 || document.activeElement === document.getElementById('canvas-text-editor')) return;
@@ -1645,6 +2998,7 @@
       window.addEventListener('keydown', (e) => {
         if (e.key !== 'Delete' && e.key !== 'Backspace') return;
         if (interactionState.selectedAssetIndices.size === 0) return;
+        pushHistory();
         // Remove in descending order to avoid index shifts
         const toRemove = Array.from(interactionState.selectedAssetIndices).sort((a, b) => b - a);
         for (const idx of toRemove) {
@@ -1654,6 +3008,7 @@
         interactionState.hoveredAssetIndex = -1;
         scheduleRedraw();
         e.preventDefault();
+        refreshVideosToggleIcon();
       });
     })();
   </script>
