@@ -1,266 +1,33 @@
 <!doctype html>
 <html lang="en">
-<head>
+  <head>
+    <!-- Performance hints: preconnect to common asset hosts -->
+    <link rel="preconnect" href="https://images.unsplash.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <!-- Optional: preload a hero/background image if known -->
+    <!-- <link rel="preload" as="image" href="YOUR_BACKGROUND_IMAGE_URL.webp" imagesrcset="YOUR_BACKGROUND_IMAGE_URL_1x.webp 1x, YOUR_BACKGROUND_IMAGE_URL_2x.webp 2x" imagesizes="100vw"> -->
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Canvas View</title>
   <link rel="preconnect" href="https://picsum.photos" crossorigin>
   <link rel="dns-prefetch" href="https://picsum.photos">
-  <style>
-    :root {
-      --bg: #0f172a;
-      --text: #e5e7eb;
-      --muted: #94a3b8;
-      --accent: #6366f1;
-    }
-    * { box-sizing: border-box; }
-    html, body { height: 100%; }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-      background: radial-gradient(1000px 600px at 10% -10%, #1f2937 0%, var(--bg) 50%, var(--bg) 100%);
-      color: var(--text);
-    }
-    .app {
-      display: flex;
-      align-items: flex-start;
-      gap: 24px;
-      padding: 16px 16px 16px 8px; /* reduce left padding */
-      width: 100%;
-      margin: 0; /* remove centering */
-      box-sizing: border-box;
-      min-height: 100vh;
-    }
-    .sidebar {
-      width: 280px;
-      padding: 16px;
-      background: rgba(255, 255, 255, 0.16);
-      border: 1px solid rgba(255, 255, 255, 0.28);
-      border-radius: 12px;
-      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-      /* Top alignment with canvas handled dynamically via JS */
-      position: relative;
-      z-index: 1; /* ensure above stage/canvas if overlapping */
-      align-self: center; /* keep sidebar vertically centered on page */
-      margin-left: 32px; /* left offset */
-    }
-    .sidebar .panel-title {
-      margin: 0 0 12px;
-      font-size: 18px;
-      color: var(--text);
-    }
-    .control-group { margin-bottom: 12px; }
-    .control-group label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
-    .control-group input[type="range"],
-    .control-group input[type="number"],
-    .control-group input[type="text"],
-    .control-group select { width: 100%; }
-    .inline-add-row input[type="text"] {
-      flex: 1;
-      padding: 10px 12px;
-      border-radius: 8px;
-      border: 1px solid rgba(255,255,255,0.18);
-      background: rgba(255,255,255,0.06);
-      color: var(--text);
-      font: inherit;
-      min-width: 0; /* allow flex shrink */
-    }
-    /* Panel container */
-    .panel {
-      background: rgba(17, 24, 39, 0.8);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 10px;
-      padding: 12px;
-    }
-    .panel + .panel { margin-top: 12px; }
-    .content-images { display: flex; flex-direction: column; gap: 8px; }
-    .content-images [data-asset-type] {
-      display: block; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12);
-      cursor: grab; user-select: none; transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
-    }
-    .content-images img[data-asset-type="image"] {
-      width: 100%; height: auto; display: block; border-radius: 8px;
-    }
-    .content-images .content-text[data-asset-type="text"] {
-      padding: 12px; background: rgba(255,255,255,0.06); color: var(--text);
-      font: 600 18px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-    }
-    .content-images .content-video[data-asset-type="video"] video { width: 100%; height: auto; display: block; border-radius: 8px; }
-    /* Disable native browser drag ghost for images/videos */
-    .content-images img, .content-images video { -webkit-user-drag: none; user-select: none; }
-    .content-images [data-asset-type]:hover {
-      border-color: rgba(255, 255, 255, 0.35);
-      box-shadow: 0 0 0 2px rgba(255,255,255,0.26) inset, 0 8px 24px rgba(0,0,0,0.3);
-      transform: translateY(-1px);
-    }
-    .content-images [data-asset-type]:active { cursor: grabbing; }
-    body.is-dragging-asset { cursor: grabbing !important; }
-    canvas.drag-target { outline: 2px dashed rgba(255,255,255,0.35); outline-offset: 4px; }
-    /* Top controls above the canvas */
-    #top-controls {
-      display: flex;
-      justify-content: center;
-      width: auto;
-      position: fixed;
-      top: 48px; /* requested offset from top */
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 2;
-      margin-bottom: 0; /* fixed elements don't affect layout flow */
-    }
-    #canvas-size-group {
-      display: flex;
-      flex-direction: row;
-      gap: 8px;
-    }
-    #canvas-size-group button { justify-content: center; }
-    /* Floating grid toggle under canvas */
-    #grid-toggle-floating { position: fixed; z-index: 3; }
-    .icon-btn { 
-      appearance: none; border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.06);
-      color: var(--text); padding: 8px; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
-      transition: background 120ms ease, border-color 120ms ease, filter 120ms ease;
-    }
-    .icon-btn svg { width: 18px; height: 18px; display: block; fill: rgba(255,255,255,0.7); }
-    .icon-btn:hover { background: rgba(255,255,255,0.12); }
-    .icon-btn.active { background: var(--accent); border-color: rgba(255,255,255,0.22); }
-    .icon-btn.active svg { fill: white; }
-    .btn[disabled], .icon-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
-
-    /* Text overlay */
-    .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: none; align-items: center; justify-content: center; z-index: 50; }
-    .overlay.show { display: flex; }
-    .modal { width: min(560px, 90vw); background: rgba(17,24,39,0.95); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 16px; box-shadow: 0 20px 50px rgba(0,0,0,0.45); }
-    .modal h3 { margin: 0 0 12px; color: var(--text); font-size: 16px; }
-    .modal .row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
-    .modal .field { display: flex; gap: 8px; }
-    .modal input[type="text"] { flex: 1; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.06); color: var(--text); font: inherit; }
-    .modal .actions { margin-top: 12px; display: flex; gap: 8px; justify-content: flex-end; }
-    /* In-canvas text editor */
-    #canvas-text-editor {
-      position: fixed;
-      z-index: 10;
-      background: transparent;
-      color: #111827;
-      border: 1px dashed rgba(79,70,229,0.6);
-      border-radius: 6px;
-      padding: 2px 4px;
-      outline: none;
-      resize: none;
-      overflow: hidden;
-      white-space: pre-wrap;
-      caret-color: var(--accent);
-      animation: caretGlow 1.2s ease-in-out infinite;
-      box-sizing: border-box;
-    }
-    /* Custom selection color for the inline text editor */
-    #canvas-text-editor::selection { background: rgba(79,70,229,0.28); color: #111827; }
-    #canvas-text-editor::-moz-selection { background: rgba(79,70,229,0.28); color: #111827; }
-    @keyframes caretGlow {
-      0% { box-shadow: 0 0 0 0 rgba(79,70,229,0.0); }
-      50% { box-shadow: 0 0 0 3px rgba(79,70,229,0.25); }
-      100% { box-shadow: 0 0 0 0 rgba(79,70,229,0.0); }
-    }
-    .btn {
-      appearance: none;
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      background: rgba(255, 255, 255, 0.06);
-      color: var(--text);
-      padding: 10px 12px;
-      border-radius: 8px;
-      cursor: pointer;
-      font: inherit;
-      text-align: center;
-      transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease, filter 120ms ease;
-    }
-    .btn:hover { background: rgba(255, 255, 255, 0.12); }
-    .btn:focus { outline: 2px solid rgba(255, 255, 255, 0.3); outline-offset: 2px; }
-    .btn-primary { background: var(--accent); border-color: rgba(255, 255, 255, 0.22); color: white; box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
-    .btn-primary:hover { filter: brightness(1.05); }
-    /* Prompt suggestion chips and autocomplete */
-    #prompt-suggestions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
-    .chip { padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.06); color: var(--text); cursor: pointer; font: inherit; }
-    .chip:hover { background: rgba(255,255,255,0.12); }
-    #prompt-autocomplete { position: absolute; z-index: 60; background: rgba(17,24,39,0.98); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 6px; list-style: none; margin: 4px 0 0 0; display: none; max-height: 180px; overflow-y: auto; min-width: 220px; }
-    #prompt-autocomplete.show { display: block; }
-    #prompt-autocomplete li { padding: 6px 8px; border-radius: 6px; cursor: pointer; color: var(--text); }
-    #prompt-autocomplete li:hover { background: rgba(255,255,255,0.08); }
-    /* Context menu */
-    #context-menu {
-      position: fixed;
-      top: 0; left: 0;
-      display: none;
-      background: rgba(17,24,39,0.98);
-      color: var(--text);
-      border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 10px;
-      box-shadow: 0 12px 32px rgba(0,0,0,0.45);
-      min-width: 180px;
-      padding: 6px;
-      z-index: 70;
-    }
-    #context-menu .item {
-      appearance: none;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      width: 100%;
-      text-align: left;
-      border: 0;
-      background: transparent;
-      color: var(--text);
-      font: inherit;
-      padding: 10px 12px;
-      border-radius: 8px;
-      cursor: pointer;
-    }
-    #context-menu .item:hover { background: rgba(255,255,255,0.08); }
-    #context-menu .item:disabled { opacity: 0.5; cursor: not-allowed; }
-    #context-menu .item .icon { width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; }
-    #context-menu .item .icon svg { width: 16px; height: 16px; display: block; fill: rgba(255,255,255,0.85); }
-    #context-menu .item .label { flex: 1; }
-    .stage {
-      flex: 1;
-      min-width: 0;
-      display: flex;
-      flex-direction: column; /* stack toolbar above canvas */
-      align-items: center; /* center horizontally */
-      justify-content: center; /* center stack vertically */
-      height: calc(100vh - 32px); /* account for .app vertical padding (16px top + 16px bottom) */
-      position: relative;
-      z-index: 0;
-    }
-    canvas {
-      background: #ffffff; /* default white background */
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 0;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
-      display: block;
-      /* Width/height are set dynamically via JS to enforce fixed aspect ratios */
-    }
-    @media (max-width: 800px) {
-      .app { flex-direction: column; align-items: stretch; }
-      .sidebar { width: 100%; }
-      canvas { height: 60vh; }
-    }
-  </style>
+  <!-- Styles are imported via Vite entry src/main.ts -->
   
 </head>
 <body>
   <div class="app">
     <aside class="sidebar" aria-label="Controls sidebar">
-      <div class="panel" style="width:100%">
+      <div class="panel">
         <div class="control-group">
           <h3 class="panel-title">Content</h3>
           <div class="content-images">
-            <div class="control-group" style="width:100%">
+            <div class="control-group">
               <label for="inline-add-text-input" class="panel-title">Text</label>
-              <div class="inline-add-row" style="display:flex; gap:8px; align-items:center; width:100%">
+              <div class="inline-add-row">
                 <input id="inline-add-text-input" type="text" placeholder="Add your text" />
                 <button id="inline-add-text-btn" class="btn btn-primary" disabled>Add</button>
               </div>
-              <div class="inline-add-actions" style="margin-top:8px; display:flex;">
+              <div class="inline-add-actions">
                 <button id="open-generate-text" class="btn" aria-haspopup="dialog" style="width:100%">Generate text</button>
               </div>
             </div>
@@ -299,7 +66,7 @@
         <button id="toggle-grid-btn" class="icon-btn" aria-label="Toggle grid" aria-pressed="false">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z"/></svg>
         </button>
-        <button id="toggle-videos-btn" class="icon-btn" aria-label="Play all videos" aria-pressed="false" style="margin-left:8px">
+        <button id="toggle-videos-btn" class="icon-btn" aria-label="Play all videos" aria-pressed="false">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
         </button>
       </div>
@@ -323,6 +90,12 @@
             <svg viewBox="0 0 24 24"><path d="M9.64 7.64L12 10l8-8 2 2-8 8 2.36 2.36A3 3 0 1 1 14 16a3 3 0 0 1-2-5.24L9.64 8.36a3 3 0 1 1 0-0.72zM7 7a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm10 10a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/></svg>
           </span>
           <span class="label">Cut</span>
+        </button>
+        <button id="ctx-paste" class="item" role="menuitem">
+          <span class="icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M19 7h-4V5a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v2H5v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7zm-8-2h2v2h-2V5zm8 14H7V9h10v10z"/></svg>
+          </span>
+          <span class="label">Paste</span>
         </button>
         <button id="ctx-bring-front" class="item" role="menuitem">
           <span class="icon" aria-hidden="true">
@@ -386,379 +159,16 @@
             <button id="generate-text" class="btn" disabled>Generate</button>
             <button id="add-text-confirm" class="btn btn-primary" disabled>Add</button>
           </div>
-          <textarea id="generate-preview" style="margin-top:8px;color:#111827;background:#fff;border-radius:8px;border:1px solid rgba(0,0,0,0.2);padding:10px;width:100%;min-height:120px"></textarea>
+          <textarea id="generate-preview"></textarea>
         </div>
       </div>
     </div>
   </div>
-  <script>
-    (function () {
-      const canvas = document.getElementById('main-canvas');
-      const sizeGroup = document.getElementById('canvas-size-group');
-      /**
-       * Asset model stored in CSS pixel coordinates relative to the canvas.
-       * type: 'image' | 'text' | 'video'
-       * For images/videos: x, y, width, height, element
-       * For text: x, y, text, color, font, maxWidth (optional)
-       */
-      const assets = [];
-      let backgroundLayer = null; // { type, bitmap|element|text|font|color }
-      const interactionState = {
-        hoveredAssetIndex: -1,
-        selectedAssetIndices: new Set(),
-        isMovingSelected: false,
-        lastMoveClientX: 0,
-        lastMoveClientY: 0,
-        // Marquee selection
-        isMarqueeSelecting: false,
-        marqueePending: false,
-        marqueePendingAdditive: false,
-        marqueePendingStartCX: 0,
-        marqueePendingStartCY: 0,
-        marqueeStartCX: 0,
-        marqueeStartCY: 0,
-        marqueeEndCX: 0,
-        marqueeEndCY: 0,
-        marqueeAdditive: false,
-        // Resize handles
-        hoveredHandle: null, // 'nw'|'ne'|'se'|'sw'|null
-        isResizingSelected: false,
-        activeHandle: null,
-        resizeStartClientX: 0,
-        resizeStartClientY: 0,
-        initialSelectionBounds: null,
-        initialSelectedSnapshot: null, // [{index,x,y,width,height,font}]
-        // History control for gestures
-        historyPushedInGesture: false,
-        // Hovering background video
-        hoveringBackground: false,
-      };
-      // ===== Undo/Redo History =====
-      const historyStack = [];
-      const redoStack = [];
-
-      const HISTORY_LIMIT = 50;
-      const MAX_IMAGE_DIM = 2560;
-
-      function cloneAssetForHistory(a) {
-        if (!a) return null;
-        if (a.type === 'image') {
-          return { type: 'image', x: a.x, y: a.y, width: a.width, height: a.height, sourceUrl: a.sourceUrl || '' };
-        }
-        if (a.type === 'video') {
-          return { type: 'video', x: a.x, y: a.y, width: a.width, height: a.height, sourceUrl: a.sourceUrl || '' };
-        }
-        if (a.type === 'text') {
-          return { type: 'text', x: a.x, y: a.y, text: a.text, color: a.color, font: a.font, maxWidth: a.maxWidth };
-        }
-        return null;
-      }
-
-      function cloneBackgroundForHistory(bg) {
-        if (!bg) return null;
-        if (bg.type === 'image') return { type: 'image', element: bg.element || null, bitmap: bg.bitmap || null };
-        if (bg.type === 'video') return { type: 'video', element: bg.element || null, ready: !!bg.ready };
-        if (bg.type === 'text') return { type: 'text', text: bg.text || '', font: bg.font, color: bg.color };
-        return null;
-      }
-
-      function snapshotState() {
-        return {
-          assets: assets.map(cloneAssetForHistory),
-          background: cloneBackgroundForHistory(backgroundLayer),
-        };
-      }
-
-      function applySnapshot(snap) {
-        if (!snap) return;
-        // Dispose current assets' heavy resources before rebuilding
-        for (const a of assets) {
-          if (a.type === 'image' && a.bitmap && a.bitmap.close) { try { a.bitmap.close(); } catch (_) {} }
-          if (a.type === 'video' && a.element) {
-            try { a.element.pause(); } catch(_) {}
-            if (a.sourceUrl && a.sourceUrl.startsWith('blob:')) { try { URL.revokeObjectURL(a.sourceUrl); } catch (_) {} }
-            try { a.element.src = ''; a.element.load(); } catch (_) {}
-          }
-        }
-        // Dispose existing background before replacing
-        if (backgroundLayer) {
-          try {
-            if (backgroundLayer.type === 'video' && backgroundLayer.element) {
-              try { backgroundLayer.element.pause(); } catch (_) {}
-              const src = backgroundLayer.element.src || '';
-              if (typeof src === 'string' && src.startsWith('blob:')) {
-                try { URL.revokeObjectURL(src); } catch (_) {}
-              }
-              try { backgroundLayer.element.src = ''; backgroundLayer.element.load(); } catch (_) {}
-            }
-          } catch (_) {}
-        }
-        assets.splice(0, assets.length);
-        backgroundLayer = cloneBackgroundForHistory(snap.background);
-        // Recreate lightweight assets
-        for (const s of snap.assets) {
-          if (s.type === 'image') {
-            // Create a placeholder; load bitmap lazily on next draw via Image element
-            assets.push({ type: 'image', x: s.x, y: s.y, width: s.width, height: s.height, element: null, bitmap: null, loaded: false, sourceUrl: s.sourceUrl });
-            // Kick off async load
-            if (s.sourceUrl) {
-              const img = new Image(); img.crossOrigin = 'anonymous';
-              img.onload = async () => {
-                try {
-                  const iw = img.naturalWidth || img.width || 0; const ih = img.naturalHeight || img.height || 0;
-                  const scale = Math.min(1, MAX_IMAGE_DIM / Math.max(iw, ih) || 1);
-                  const rW = Math.max(1, Math.round(iw * scale)); const rH = Math.max(1, Math.round(ih * scale));
-                  const bmp = await createImageBitmap(img, { resizeWidth: rW, resizeHeight: rH, resizeQuality: 'low' });
-                  const a = assets.find(x => x.type==='image' && x.sourceUrl===s.sourceUrl && !x.loaded);
-                  if (a) { a.bitmap = bmp; a.loaded = true; a.element = null; scheduleRedraw(); }
-                } catch(_) {}
-              };
-              img.src = s.sourceUrl;
-            }
-          } else if (s.type === 'video') {
-            const v = document.createElement('video'); v.crossOrigin='anonymous'; v.playsInline = true; v.muted = true; v.loop = true; v.preload = 'metadata';
-            const a = { type: 'video', x: s.x, y: s.y, width: s.width, height: s.height, element: v, ready: false, sourceUrl: s.sourceUrl };
-            if (s.sourceUrl) v.src = s.sourceUrl;
-            v.addEventListener('loadeddata', () => { a.ready = true; scheduleRedraw(); });
-            assets.push(a);
-          } else if (s.type === 'text') {
-            assets.push({ type: 'text', x: s.x, y: s.y, text: s.text, color: s.color, font: s.font, maxWidth: s.maxWidth });
-          }
-        }
-        interactionState.selectedAssetIndices.clear();
-        interactionState.hoveredAssetIndex = -1;
-        scheduleRedraw();
-      }
-
-      function pushHistory() {
-        try {
-          historyStack.push(snapshotState());
-          redoStack.length = 0; // clear redo on new action
-          if (historyStack.length > HISTORY_LIMIT) historyStack.shift();
-        } catch (_) { /* ignore */ }
-      }
-
-      function undo() {
-        if (historyStack.length === 0) return false;
-        const current = snapshotState();
-        const prev = historyStack.pop();
-        redoStack.push(current);
-        applySnapshot(prev);
-        return true;
-      }
-
-      function redo() {
-        if (redoStack.length === 0) return false;
-        const current = snapshotState();
-        const next = redoStack.pop();
-        historyStack.push(current);
-        applySnapshot(next);
-        return true;
-      }
-
-      function pushHistoryForGesture() {
-        if (!interactionState.historyPushedInGesture) {
-          pushHistory();
-          interactionState.historyPushedInGesture = true;
-        }
-      }
-      let lastGeometry = null; // { width, height, cols, rows, colWidth, rowHeight, verticals[], horizontals[] }
-      // Offscreen grid cache to avoid re-drawing the grid every frame
-      let gridCacheCanvas = null;
-      let gridCacheCtx = null;
-      let gridCacheBitmap = null;
-      let lastCacheSignature = '';
-      let isGridEnabled = false;
-      let lowQualityMode = false; // Low power mode toggle
-      // Background cache
-      let backgroundCacheCanvas = null;
-      let backgroundCacheCtx = null;
-      let backgroundCacheBitmap = null;
-      let backgroundCacheDirty = true;
-      let isCanvasVisible = true;
-      // Redraw scheduler
-      let redrawScheduled = false;
-      function scheduleRedraw() {
-        if (redrawScheduled) return;
-        redrawScheduled = true;
-        requestAnimationFrame(() => {
-          redrawScheduled = false;
-          redraw();
-        });
-      }
-      // Suppress single-click video toggle when a double-click occurs
-      let pendingVideoClickToggle = null;
-      // Current in-canvas text edit target index; hoisted to avoid TDZ in early renders
-      let editingAssetIndex = -1;
-
-      function getResponsiveColumns(canvasWidth) {
-        if (canvasWidth < 600) return 4;      // mobile
-        if (canvasWidth < 1024) return 8;     // tablet
-        return 12;                             // desktop and up
-      }
-
-      function getCanvasDimensions() {
-        if (lastGeometry) return { width: lastGeometry.width, height: lastGeometry.height };
-        const rect = canvas.getBoundingClientRect();
-        return { width: Math.max(1, Math.round(rect.width)), height: Math.max(1, Math.round(rect.height)) };
-      }
-
-      function clamp(value, min, max) { return Math.min(max, Math.max(min, value)); }
-
-      function fitRectToCanvas(width, height) {
-        const { width: cw, height: ch } = getCanvasDimensions();
-        let w = width, h = height;
-        if (w > cw || h > ch) {
-          const s = Math.min(cw / w, ch / h);
-          w = Math.max(1, Math.round(w * s));
-          h = Math.max(1, Math.round(h * s));
-        }
-        return { width: w, height: h };
-      }
-
-      function clampAssetWithinCanvas(asset) {
-        const { width: cw, height: ch } = getCanvasDimensions();
-        if (asset.type !== 'text') {
-          asset.x = clamp(asset.x, 0, cw - asset.width);
-          asset.y = clamp(asset.y, 0, ch - asset.height);
-        } else {
-          // Do not clamp text; allow it to extend beyond canvas bounds
-        }
-      }
-
-      function getResponsiveRows(canvasWidth, canvasHeight, cols) {
-        // Keep rows ~= cols to mimic canvas aspect ratio, but enforce minimum row height
-        const maxRowsByHeight = Math.max(1, Math.floor(canvasHeight / 130));
-        return Math.max(1, Math.min(Math.round(cols), maxRowsByHeight));
-      }
-
-      function getTargetDpr() {
-        const natural = Math.min(2, window.devicePixelRatio || 1);
-        if (lowQualityMode) return 1;
-        if (interactionState.isMovingSelected || interactionState.isResizingSelected) return 1;
-        return natural;
-      }
-
-      function resizeCanvasAndDraw() {
-        const devicePixelRatioValue = getTargetDpr();
-        const rect = canvas.getBoundingClientRect();
-
-        const cssWidth = Math.max(1, Math.round(rect.width));
-        const cssHeight = Math.max(1, Math.round(rect.height));
-
-        canvas.width = Math.max(1, Math.floor(cssWidth * devicePixelRatioValue));
-        canvas.height = Math.max(1, Math.floor(cssHeight * devicePixelRatioValue));
-
-        const context = canvas.getContext('2d');
-        context.setTransform(devicePixelRatioValue, 0, 0, devicePixelRatioValue, 0, 0);
-        context.imageSmoothingEnabled = !lowQualityMode;
-        context.imageSmoothingQuality = lowQualityMode ? 'low' : 'high';
-
-        const candidateColumns = getResponsiveColumns(cssWidth);
-        const maxByHeight = Math.max(1, Math.floor(cssHeight / 130));
-        const finalColumns = Math.min(candidateColumns, maxByHeight);
-        const finalRows = getResponsiveRows(cssWidth, cssHeight, finalColumns);
-        lastGeometry = computeGeometry(cssWidth, cssHeight, finalColumns, finalRows);
-        updateGridCache(lastGeometry);
-        backgroundCacheDirty = true;
-        drawGrid(context, lastGeometry, interactionState);
-      }
-
-      function updateCanvasAspectFromUI() {
-        if (!sizeGroup) return;
-        const selectedButton = sizeGroup.querySelector('[data-selected="true"]') || sizeGroup.querySelector('.btn.btn-primary');
-        const value = selectedButton ? selectedButton.getAttribute('value') : 'landscape';
-        // Compute fixed aspect dimensions based on stage width and 80vh cap
-        const stage = canvas.parentElement;
-        const stageRect = stage.getBoundingClientRect();
-        const topControls = document.getElementById('top-controls');
-        // Toolbar is fixed; compute available height under it
-        const toolbarRect = topControls ? topControls.getBoundingClientRect() : { bottom: 48 };
-        // Canvas must be 32px below toolbar bottom
-        const spacer = 32;
-        const availableStageHeight = Math.max(0, window.innerHeight - (toolbarRect.bottom || 48) - spacer);
-        // Hard cap at 80vh by spec
-        const eightyVh = window.innerHeight * 0.8;
-        const maxHeight = Math.min(eightyVh, availableStageHeight || eightyVh);
-        const maxWidth = stageRect.width * 0.98; // small inset to avoid overflow
-
-        let targetWidth = maxWidth;
-        let targetHeight = maxHeight;
-        if (value === 'square') {
-          const size = Math.min(maxWidth, maxHeight);
-          targetWidth = size;
-          targetHeight = size;
-        } else if (value === 'portrait') {
-          // 19.5:9 (modern phone portrait)
-          const portraitW = 9;
-          const portraitH = 19.5;
-          // widthByHeight: given maxHeight, the width that fits the ratio
-          const widthByHeight = maxHeight * (portraitW / portraitH);
-          // heightByWidth: given maxWidth, the height that fits the ratio
-          const heightByWidth = maxWidth * (portraitH / portraitW);
-          if (widthByHeight <= maxWidth) {
-            targetWidth = widthByHeight;
-            targetHeight = maxHeight;
-          } else {
-            targetWidth = maxWidth;
-            targetHeight = heightByWidth;
-          }
-        } else {
-          // landscape 16:9
-          const heightByWidth = maxWidth * (9 / 16);
-          const widthByHeight = maxHeight * (16 / 9);
-          if (heightByWidth <= maxHeight) {
-            targetWidth = maxWidth;
-            targetHeight = heightByWidth;
-          } else {
-            targetWidth = widthByHeight;
-            targetHeight = maxHeight;
-          }
-        }
-
-        canvas.style.width = `${Math.floor(targetWidth)}px`;
-        canvas.style.height = `${Math.floor(targetHeight)}px`;
-        // Match toolbar width exactly to canvas width and position canvas 32px below
-        if (topControls) {
-          topControls.style.width = `${Math.floor(targetWidth)}px`;
-        }
-        canvas.style.marginTop = `${spacer}`.concat('px');
-        // Redraw with new size
-        requestAnimationFrame(() => {
-          resizeCanvasAndDraw();
-          positionTopControlsToCanvas();
-        });
-      }
-
-      function positionTopControlsToCanvas() {
-        const topControls = document.getElementById('top-controls');
-        const floating = document.getElementById('grid-toggle-floating');
-        if (!topControls) return;
-        const rect = canvas.getBoundingClientRect();
-        topControls.style.left = `${rect.left + rect.width / 2}px`;
-        topControls.style.transform = 'translateX(-50%)';
-        topControls.style.width = `${Math.floor(rect.width)}px`;
-        if (floating) {
-          const bottomOffset = 12; // px below canvas
-          const leftOffset = 12; // px from left edge of canvas
-          floating.style.left = `${rect.left + leftOffset}px`;
-          floating.style.top = `${rect.bottom + bottomOffset}px`;
-          floating.style.width = 'auto';
-        }
-      }
-
-      function computeGeometry(width, height, cols, rws) {
-        const columnWidth = width / cols;
-        const rowHeight = height / rws;
-        const verticals = [];
-        const horizontals = [];
-        for (let i = 1; i < cols; i += 1) verticals.push(i * columnWidth);
-        for (let j = 1; j < rws; j += 1) horizontals.push(j * rowHeight);
-        return { width, height, cols, rows: rws, colWidth: columnWidth, rowHeight, verticals, horizontals };
-      }
-
-      // Build/update cached grid background
-      function updateGridCache(geom) {
+    <script type="module" src="/src/main.ts"></script>
+    <!-- Inline app script migrated to src/main.ts (truncated in HTML) -->
+    <!-- TRUNCATED_START
+        // Build/update cached grid background (moved)
+        function updateGridCache(geom) {
         const { width, height, cols, rows: rws, colWidth, rowHeight, verticals, horizontals } = geom;
         const signature = `${Math.round(width)}x${Math.round(height)}-${cols}x${rws}`;
         if (signature === lastCacheSignature && gridCacheCanvas) return;
@@ -3010,7 +2420,8 @@
         e.preventDefault();
         refreshVideosToggleIcon();
       });
-    })();
-  </script>
+      })();
+    TRUNCATED_END -->
+    
 </body>
 </html>
